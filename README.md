@@ -59,7 +59,7 @@ Here is also an instruction to setup a conda environment for the experiments.
 conda create -n reproduce python=3.11
 conda activate reproduce
 pip3 install torch torchvision torchaudio
-pip install wandb seaborn evaluate tokenizers loguru scipy tqdm tomli-w
+pip install wandb seaborn evaluate tokenizers loguru scipy tqdm tomli-w pydantic
 ```
 
 One has to login to wandb for uploading the metrics before runing the experiments.
