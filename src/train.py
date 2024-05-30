@@ -43,6 +43,7 @@ from torch.nn import Module
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+from torch.cuda.amp import GradScaler
 from torch.profiler import schedule, profile, ProfilerActivity
 
 '''
@@ -69,6 +70,7 @@ def train_epoch(cfg: Config,
                 optimizer: Optimizer,
                 lr_scheduler: LRScheduler,
                 criterion: Module,
+                scaler: GradScaler,
                 profiler):
     start_time = time.time()
     model.train()
@@ -86,12 +88,14 @@ def train_epoch(cfg: Config,
 
         # Forward pass
         optimizer.zero_grad()
-        pred = model(src, tgt[:, :-1])
-        loss = criterion(pred.view(-1, cfg.data.tokenizer.vocab_size), tgt[:, 1:].reshape(-1))
+        with torch.autocast(device_type='cuda', dtype=torch.float16, enabled=cfg.train.use_amp):
+            pred = model(src, tgt[:, :-1])
+            loss = criterion(pred.view(-1, cfg.data.tokenizer.vocab_size), tgt[:, 1:].reshape(-1))
 
         # Backward pass
-        loss.backward()
-        optimizer.step()
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         lr_scheduler.step()
 
         # Update metrics
@@ -176,6 +180,7 @@ def main():
     lr_scheduler = get_lr_scheduler(cfg, optimizer)
     criterion = torch.nn.CrossEntropyLoss(ignore_index=tokenizer.token_to_id(SPECIAL_TOKENS.PAD),
                                           label_smoothing=cfg.train.label_smoothing)
+    scaler = torch.cuda.amp.GradScaler(enabled=cfg.train.use_amp)
 
     if cfg.train.network.world_size > 1:
         model = DDP(model,
@@ -244,6 +249,7 @@ def main():
                                                                                       optimizer,
                                                                                       lr_scheduler,
                                                                                       criterion,
+                                                                                      scaler,
                                                                                       p)
             total_train_time += epoch_train_time
             val_loss, val_perplexity = valid(cfg, epoch, model, val_ds, criterion)
@@ -272,7 +278,8 @@ def main():
                                'epoch_train_perplexity': stats[1],
                                'val_loss': stats[2],
                                'val_perplexity': stats[3],
-                               'time': total_train_time
+                               'time': total_train_time,
+                               'epoch': epoch + 1,
                                }, step=global_step)
                 train_log.loc[epoch - start_epoch] = [epoch + 1,
                                                       global_step,

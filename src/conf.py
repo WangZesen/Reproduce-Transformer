@@ -109,6 +109,7 @@ class Train(BaseModel):
     label_smoothing: float = Field(default=0.1)
     checkpoint_dir: Optional[str] = None
     max_epochs: int = Field(default=20)
+    use_amp: bool = Field(default=False)
     reproduce: Reproduce = Field(default_factory=Reproduce)
     network: Network = Field(default_factory=Network)
     model: Model = Field(default_factory=Model)

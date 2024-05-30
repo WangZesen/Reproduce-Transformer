@@ -1,6 +1,7 @@
 max_token_per_batch = 25000
 label_smoothing = 0.1
 max_epochs = 20
+use_amp = true
 
 [optim]
 name = "adam"
