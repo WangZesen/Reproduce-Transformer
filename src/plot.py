@@ -1,25 +1,31 @@
 import os
 import re
 import sys
+import tomllib
 import numpy as np
 from typing import Dict
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
+from conf import Train as TrainConfig
 from loguru import logger
 logger.remove()
 logger.add(sys.stdout)
 sns.set_theme(style='whitegrid', font_scale=1.4)
 
 def read_test_log(exp_dir: str):
+    def _load_toml(file_path: str):
+        with open(file_path, 'rb') as f:
+            return tomllib.load(f)
     num_workers = 0
     test_log = pd.read_csv(os.path.join(exp_dir, 'test_log.csv'), sep=',')
     with open(os.path.join(exp_dir, 'train_cfg.dump.toml'), 'r') as f:
         dumped_train_cfg = f.read()
         matches = re.findall('world_size = .*\n', dumped_train_cfg)
         num_workers = int(matches[0].split(' ')[2])
-    label = f'transformer - {num_workers} workers'
+    train_cfg = TrainConfig(**_load_toml(os.path.join(exp_dir, 'train_cfg.dump.toml')))
+    label = f'transformer - {num_workers} workers{" - amp" if train_cfg.use_amp else ""}'
     test_log['label'] = label
     return test_log, test_log['BLEU Score'].to_list()[-1], test_log['time'].to_list()[-1]
 

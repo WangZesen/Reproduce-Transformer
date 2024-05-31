@@ -29,4 +29,4 @@ wandb_project = "reproduce_transformer"
 checkpoint_freq = 1
 
 [reproduce]
-seed = 810975
+seed = 810977
