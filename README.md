@@ -22,9 +22,10 @@ For the experiment, the model is trained by four A40 GPUs. The reproduced result
 
 The table below reports the total number of iterations, the BLEU scores evaluated by the trained model at the last iteration, and the total training time.
 
-|  Step  |    BLEU Score   | Training Time (hours) |
-|:------:|:---------------:|:---------------------:|
-| 112760 | 0.2760 ± 0.0013 |    7.7557 ± 0.0066    |
+|  Step  |        AMP         |   BLEU Score    | Training Time (hours) |
+|:------:|:------------------:|:---------------:|:---------------------:|
+| 112760 | :white_check_mark: | 0.2760 ± 0.0013 |    7.7557 ± 0.0066    |
+| 112760 | :negative_squared_cross_mark: | 0.2758 ± 0.0022 |    5.2069 ± 0.0010    |
 
 
 ### Transformer (big) on WMT14 English-French
