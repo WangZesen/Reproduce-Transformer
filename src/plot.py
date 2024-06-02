@@ -33,9 +33,9 @@ def plot(logs: pd.DataFrame, x: str, y: str, img_dir: str, xscale: str='linear',
     plt.clf()
     plt.figure(figsize=(8, 6))
     sns.lineplot(data=logs, x=x, y=y, style='label', hue='label', errorbar=('sd', 2))
-    # if y == 'BLEU Score':
-    #     # plot baseline
-    #     plt.axhline(y=0.273, color='r', linestyle='--', label='baseline')
+    if y == 'BLEU Score':
+        # plot baseline
+        plt.axhline(y=0.273, color='r', linestyle='--', label='baseline')
     plt.xscale(xscale)
     plt.yscale(yscale)
     plt.xlim(left=0)
@@ -69,9 +69,9 @@ def main():
         interpolated = pd.DataFrame(columns=test_log.columns)
 
         label = test_log['label'].unique()[0]
-        x = test_log['time'].unique()
-        y_bleu = test_log['BLEU Score'].unique()
-        y_val_loss = test_log['val_loss'].unique()
+        x = test_log['time'].to_list()
+        y_bleu = test_log['BLEU Score'].to_list()
+        y_val_loss = test_log['val_loss'].to_list()
 
         f_bleu = interp1d(x, y_bleu, kind='linear', fill_value='extrapolate')
         f_val_loss = interp1d(x, y_val_loss, kind='linear', fill_value='extrapolate')
