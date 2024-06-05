@@ -41,7 +41,7 @@ def read_test_log(log_file_dir: str):
     data = pd.read_csv(log_file_dir, sep=',')
     logger.info(f'Read test log from {log_file_dir}')
     logger.info(f'\tNumber of epochs: {len(data)} (from {data["epoch"].min()} to {data["epoch"].max()})')
-    logger.info(f'\tNumber of steps: {data["Step"].max()}')
+    logger.info(f'\tNumber of steps: {data["step"].max()}')
     return data
 
 
