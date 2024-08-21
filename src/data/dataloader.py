@@ -57,7 +57,7 @@ def generate_concatenated_positional_encoding(subseq_lengths: List[int], pe: tor
     return positional_encoding_index
 
 
-def unbatched_collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]], pad_token_idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def unbatched_collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]], pad_token_idx: int) -> Tuple[torch.Tensor, torch.Tensor, int]:
     src_batch, tgt_batch = zip(*batch)
     src_num_tokens = sum(src.size(0) for src in src_batch)
     tgt_num_tokens = sum(tgt.size(0) for tgt in tgt_batch)
@@ -72,7 +72,8 @@ def get_dataloaders(cfg: "Config",
                    test_dataset: "WMTDataset",
                    tokenizer: Tokenizer,
                    token_pad: str,
-                   train_shuffle: bool = True) -> Tuple[DataLoader, DataLoader, DataLoader, DistributedTokenBatchSampler]:
+                   train_shuffle: bool = True) -> Tuple[DataLoader, DataLoader]:
+    assert cfg.train is not None
     
     train_sampler = DistributedTokenBatchSampler(
         dataset=train_dataset,
@@ -113,6 +114,8 @@ def get_dataloader(cfg: "Config",
                    token_pad: str,
                    drop_last: bool = False,
                    shuffle: bool = False) -> DataLoader:
+    assert cfg.train is not None
+
     _unbatched_collate_fn = partial(unbatched_collate_fn, pad_token_idx=tokenizer.token_to_id(token_pad))
     sampler = DistributedTokenBatchSampler(
         dataset=dataset,

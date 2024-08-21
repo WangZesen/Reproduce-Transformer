@@ -72,6 +72,7 @@ def train_epoch(cfg: Config,
                 criterion: Module,
                 scaler: GradScaler,
                 profiler):
+    assert cfg.train is not None
     start_time = time.time()
     model.train()
     total_step = len(train_ds)
@@ -144,6 +145,7 @@ def valid(cfg: Config,
 
 def main():
     cfg = parse_config(load_eval_cfg=False)
+    assert cfg.train is not None
 
     '''
         Initialize the distributed process group and set random seed
@@ -240,7 +242,7 @@ def main():
         profile_memory=True
     ) as p:
         for epoch in range(start_epoch, cfg.train.max_epochs):
-            train_ds.batch_sampler.set_epoch(epoch)
+            train_ds.batch_sampler.set_epoch(epoch) # type: ignore
             train_loss, train_perplexity, global_step, epoch_train_time = train_epoch(cfg,
                                                                                       epoch,
                                                                                       global_step,
@@ -281,7 +283,7 @@ def main():
                                'time': total_train_time,
                                'epoch': epoch + 1,
                                }, step=global_step)
-                train_log.loc[epoch - start_epoch] = [epoch + 1,
+                train_log.loc[epoch - start_epoch] = [epoch + 1, # type: ignore
                                                       global_step,
                                                       stats[0],
                                                       stats[1],
@@ -289,7 +291,7 @@ def main():
                                                       stats[3],
                                                       total_train_time,
                                                       os.path.abspath(checkpoint_dir) if checkpoint_dir else '']
-                train_log.to_csv(os.path.join(cfg.train.log.log_dir, 'train_log.csv'), index=False)
+                train_log.to_csv(os.path.join(cfg.train.log.log_dir, 'train_log.csv'), index=False) # type: ignore
             
             if dist.is_initialized():
                 dist.barrier()
