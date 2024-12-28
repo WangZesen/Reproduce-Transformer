@@ -1,9 +1,8 @@
 import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
-from typing import TYPE_CHECKING, Iterator, List
-if TYPE_CHECKING:
-    from .dataset import WMTDataset
+from typing import Iterator, List
+from src.data.dataset import WMTDataset
 
 class DistributedTokenBatchSampler(Sampler[List[int]]):
     def __init__(self,

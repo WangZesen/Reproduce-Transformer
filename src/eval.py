@@ -4,11 +4,11 @@ import sys
 import numpy as np
 import torch
 from tqdm import tqdm
-from conf import Config, SPECIAL_TOKENS, parse_config
+from src.conf import Config, SPECIAL_TOKENS, parse_config
 import pandas as pd
-from model import get_model
-from data import get_dataset, get_dataloader
-from utils import batch_beam_search
+from src.model import get_model
+from src.data import get_dataset, get_dataloader
+from src.utils import batch_beam_search
 from tokenizers import Tokenizer
 import evaluate
 from loguru import logger

@@ -1,14 +1,13 @@
 import math
 import torch
-import torch.distributed as dist
 from functools import partial
-from torch.utils.data import DataLoader, Sampler
-from typing import TYPE_CHECKING, Iterator, List, Tuple
+from torch.utils.data import DataLoader
+from typing import List, Tuple
 from torch.nn.utils.rnn import pad_sequence
 from tokenizers import Tokenizer
-if TYPE_CHECKING:
-    from .dataset import WMTDataset
-    from ..conf import Config
+
+from src.data.dataset import WMTDataset
+from src.conf import Config
 
 from .sampler import DistributedTokenBatchSampler
 

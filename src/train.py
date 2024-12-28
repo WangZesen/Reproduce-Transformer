@@ -31,10 +31,10 @@ import wandb
 import torch
 import tomli_w
 import pandas as pd
-from utils import SmoothedValue, initialize_dist, get_optim, get_lr_scheduler, gather_statistics
-from conf import Config, parse_config, SPECIAL_TOKENS
-from data import get_datasets, get_dataloaders
-from model import get_model
+from src.utils import SmoothedValue, initialize_dist, get_optim, get_lr_scheduler, gather_statistics
+from src.conf import Config, parse_config, SPECIAL_TOKENS
+from src.data import get_datasets, get_dataloaders
+from src.model import get_model
 from typing import Tuple
 from tokenizers import Tokenizer
 from torch.utils.data import DataLoader

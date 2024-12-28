@@ -1,11 +1,8 @@
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from tokenizers import Tokenizer
-from typing import TYPE_CHECKING
-if TYPE_CHECKING:
-    from conf import Config
+from src.conf import Config
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 400):

@@ -5,8 +5,7 @@ import time
 import tomli_w
 import multiprocessing as mp
 from typing import Tuple
-from tqdm import tqdm
-from conf import parse_config, Config, SPECIAL_TOKENS
+from src.conf import parse_config, Config, SPECIAL_TOKENS
 import tokenizers
 from tokenizers.trainers import BpeTrainer, Trainer, WordPieceTrainer
 from tokenizers.models import BPE, WordPiece

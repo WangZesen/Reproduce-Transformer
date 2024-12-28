@@ -1,20 +1,13 @@
 import os
 import time
-import mmap
 import psutil
 import torch
 import struct
-import subprocess
-from pathlib import Path
 from torch.utils.data import Dataset
-from tokenizers  import Tokenizer
-from tokenizers.implementations import ByteLevelBPETokenizer
-from tokenizers.processors import BertProcessing
 import torch.distributed as dist
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple
 from loguru import logger
-if TYPE_CHECKING:
-    from ..conf import Config
+from src.conf import Config
 
 
 class WMTDataset(Dataset):

@@ -8,9 +8,8 @@ import torch.nn as nn
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
-from typing import TYPE_CHECKING, List, Tuple
-if TYPE_CHECKING:
-    from .conf import Config
+from typing import List, Tuple
+from src.conf import Config
 
 
 class SmoothedValue:

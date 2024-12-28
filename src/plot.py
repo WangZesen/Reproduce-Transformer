@@ -8,7 +8,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.interpolate import interp1d
-from conf import Train as TrainConfig
+from src.conf import Train as TrainConfig
 from loguru import logger
 logger.remove()
 logger.add(sys.stdout)

@@ -73,13 +73,13 @@ wandb login
 For WMT14 English-German dataset,
 ```
 sh script/preprocess/prepare-wmt14en2de.sh
-python src/preprocess.py --data-cfg config/data/wmt14_en_de.toml
+python -m src.preprocess --data-cfg config/data/wmt14_en_de.toml
 ```
 
 For WMT14 English-French dataset,
 ```
 sh script/preprocess/prepare-wmt14en2fr.sh
-python src/preprocess.py --data-cfg config/data/wmt14_en_fr.toml
+python -m src.preprocess --data-cfg config/data/wmt14_en_fr.toml
 ```
 
 ### Train
@@ -103,7 +103,7 @@ It will generate `test_log.csv` in `exp_dir` including the BLEU scores.
 
 One can also plot the training curves like the figures shown in [the result section](#results) by
 ```
-python src/plot.py <EXP_DIR_OF_REPEAT_RUN_1> <...>
+python -m src.plot <EXP_DIR_OF_REPEAT_RUN_1> <...>
 ```
 where `<EXP_DIR_OF_REPEAT_RUN_1>` means the `exp_dir` used in the last step, and one can have multiple runs to generate the error bands.
 
