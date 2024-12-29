@@ -52,16 +52,19 @@ The table below reports the total number of iterations, the BLEU scores evaluate
 
 ### Python Environment
 
-The list of requirements under test is in [`requirements.txt`](./requirements.txt).
+Here is an instruction to setup a conda environment for the experiments.
 
-Here is also an instruction to setup a conda environment for the experiments.
-
-```
-conda create -n reproduce python=3.11
+```bash
+conda create -n reproduce python=3.12
 conda activate reproduce
+# install the latest version of PyTorch
 pip3 install torch torchvision torchaudio
+# install other dependencies
 pip install wandb seaborn evaluate tokenizers loguru scipy tqdm tomli-w pydantic
 ```
+
+> [!NOTE]
+> A list of dependencies under test is available at [`requirements.txt`](./requirements.txt) for reference.
 
 One has to login to wandb for uploading the metrics before runing the experiments.
 ```
