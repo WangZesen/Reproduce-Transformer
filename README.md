@@ -85,7 +85,7 @@ uv run python -m src.preprocess --data-cfg config/data/wmt14_en_fr.toml
 The experiments are conducted on a data center using Slurm as the scheduler. To run the training with four A40 GPUs, 
 
 ```
-sbatch -A <PROJECT_ACCOUNT> script/train/4xA40.sh $(which torchrun) config/data/<DATA_CFG> config/train/<MODEL_CFG>
+sbatch -A <PROJECT_ACCOUNT> script/train/4xA40.sh config/data/<DATA_CFG> config/train/<MODEL_CFG>
 ```
 where `<PROJECT_ACCOUNT>` is the slurm project account, and `<DATA_CFG>` could be (1) `wmt14_en_de.toml` for WMT14 English-German dataset (2) `wmt14_en_fr.toml` for WMT14 English-French dataset, and `<MODEL_CFG>` could be (1) `transformer_base.toml` for transformer-base and (2) `transformer_big.toml` for transformer-big.
 
@@ -95,13 +95,13 @@ One can extract the command in [`script/train/4xA40.sh`](./script/train/4xA40.sh
 
 After the training, the experiment directories should be under `./log/<SLURM_JOB_ID>/`. To evaluate the trained models by BLEU score, firstly edit the evaluation configuration file [`eval.toml`](./config/eval/eval.toml) to update `exp_dir` to the correct directory. Then run
 ```
-python src/eval.py --eval-cfg config/eval/eval.toml
+uv run python src/eval.py --cfg-list config/eval/eval.toml
 ```
 It will generate `test_log.csv` in `exp_dir` including the BLEU scores.
 
 One can also plot the training curves like the figures shown in [the result section](#results) by
 ```
-python -m src.plot <EXP_DIR_OF_REPEAT_RUN_1> <...>
+uv run python -m src.plot <EXP_DIR_OF_REPEAT_RUN_1> <...>
 ```
 where `<EXP_DIR_OF_REPEAT_RUN_1>` means the `exp_dir` used in the last step, and one can have multiple runs to generate the error bands.
 
