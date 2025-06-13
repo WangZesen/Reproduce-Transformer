@@ -1,0 +1,11 @@
+[train.backend]
+name = "decent_dp"
+topology = "ring"
+adaptive_consensus_omega = 1.0
+
+[train.optim]
+lr = 0.0012
+betas = [0.9, 0.999]
+
+[train]
+use_amp = false

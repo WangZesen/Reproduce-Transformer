@@ -2,7 +2,7 @@ import os
 import argparse
 import tomllib
 import hashlib
-from typing import Optional, Tuple
+from typing import Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 from loguru import logger
 from functools import cached_property
@@ -110,6 +110,18 @@ class Log(_BaseModel):
         return os.path.join(PROJECT_DIR, 'log', self.job_id)
 
 
+class PyTorchDDPBackend(_BaseModel):
+    name: Literal['pytorch_ddp'] = Field(default='pytorch_ddp')
+
+class DecentDPBackend(_BaseModel):
+    name: Literal['decent_dp'] = Field(default='decent_dp')
+    topology: Literal['complete', 'ring'] = Field(default='complete')
+    adaptive_consensus_omega: float = Field(default=0.0)
+    adaptive_consensus_p: float = Field(default=3.0)
+
+ALL_BACKENDS = Union[PyTorchDDPBackend, DecentDPBackend]
+
+
 class Train(_BaseModel):
     max_tokens_per_batch: int = Field(default=25000)
     label_smoothing: float = Field(default=0.1)
@@ -122,6 +134,7 @@ class Train(_BaseModel):
     optim: Optimizer = Field(default_factory=Optimizer)
     lr_scheduler: LRScheduler = Field(default_factory=LRScheduler)
     log: Log = Field(default_factory=Log)
+    backend: ALL_BACKENDS = Field(default_factory=PyTorchDDPBackend)
 
     @computed_field(repr=False)
     @property
