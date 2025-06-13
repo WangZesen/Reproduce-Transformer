@@ -4,7 +4,7 @@ import sys
 import numpy as np
 import torch
 from tqdm import tqdm
-from src.conf import Config, SPECIAL_TOKENS, parse_config
+from src.conf import SPECIAL_TOKENS, parse_config
 import pandas as pd
 from src.model import get_model
 from src.data import get_dataset, get_dataloader

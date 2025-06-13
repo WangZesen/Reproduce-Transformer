@@ -21,7 +21,6 @@ REMAP_DICT = {
     '\u0093' : '"',
     '\u0094' : '"',
     '\u0097' : ' ',
-    ' “' : '"', # fix non-aligned beginnings
     '\u00a0' : ' ', # non-breaking white space
     '\u202f' : ' ', # narrow non-breaking white space
     'Ã¶' : 'ö', # german oe
@@ -33,11 +32,9 @@ REMAP_DICT = {
     '”'  : '"',
     '″'  : '"',
     '‶'  : '"',
-    '”'  : '"',
     '‹'  : '"',
     '›'  : '"',
     '’'  : "'",
-    '′'  : "'",
     '′'  : "'",
     '‛'  : "'",
     '‘'  : "'",
@@ -209,7 +206,7 @@ def convert(files, tokenizer, truncate, out_dir):
 
 
 def main():
-    cfg = parse_config(load_train_cfg=False, load_eval_cfg=False)
+    cfg = parse_config()
     
     logger.info(cfg)
     logger.info(f'Data directory: {cfg.data.data_dir}')

@@ -7,24 +7,7 @@
 import os
 import sys
 import subprocess
-rank = int(os.environ.get('RANK', 0))
-local_rank = int(os.environ.get('LOCAL_RANK', 0))
-world_size = int(os.environ.get('WORLD_SIZE', 1))
-local_world_size = int(os.environ.get('LOCAL_WORLD_SIZE', 1))
-if local_world_size > 1:
-    devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
-    assert len(devices) == local_world_size, 'Each process must have a single GPU.'
-    os.environ['CUDA_VISIBLE_DEVICES'] = devices[local_rank]
-slurm_id = os.environ.get('SLURM_JOB_ID', '0')
-models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
-if 'Tesla T4' in models:
-    os.environ['NCCL_IB_HCA'] = 'mlx5'
-
 from loguru import logger
-logger.remove()
-logger.add(sys.stdout)
-
-import sys
 import math
 import time
 import wandb
@@ -45,6 +28,23 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.cuda.amp import GradScaler
 from torch.profiler import schedule, profile, ProfilerActivity
+
+logger.remove()
+logger.add(sys.stdout)
+
+rank = int(os.environ.get('RANK', 0))
+local_rank = int(os.environ.get('LOCAL_RANK', 0))
+world_size = int(os.environ.get('WORLD_SIZE', 1))
+local_world_size = int(os.environ.get('LOCAL_WORLD_SIZE', 1))
+if local_world_size > 1:
+    devices = os.environ.get('CUDA_VISIBLE_DEVICES', '').split(',')
+    assert len(devices) == local_world_size, 'Each process must have a single GPU.'
+    os.environ['CUDA_VISIBLE_DEVICES'] = devices[local_rank]
+slurm_id = os.environ.get('SLURM_JOB_ID', '0')
+models = subprocess.check_output('nvidia-smi -L', shell=True).decode('utf-8')
+if 'Tesla T4' in models:
+    os.environ['NCCL_IB_HCA'] = 'mlx5'
+
 
 '''
     Helper functions
@@ -144,7 +144,7 @@ def valid(cfg: Config,
 
 
 def main():
-    cfg = parse_config(load_eval_cfg=False)
+    cfg = parse_config()
     assert cfg.train is not None
 
     '''
@@ -194,7 +194,7 @@ def main():
         if cfg.train.log.wandb_on:
             wandb.init(project=cfg.train.log.wandb_project,
                        config=cfg.model_dump(),
-                       name=cfg.train.log.slurm_id,
+                       name=cfg.train.log.job_id,
                        dir=os.environ['TMPDIR'])
         logger.info(model)
         with open(os.path.join(cfg.train.log.log_dir, 'data_cfg.dump.toml'), 'wb') as f:
@@ -234,7 +234,7 @@ def main():
             repeat=1
         ),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            os.path.join(cfg.train.log.log_dir, f'tb_trace'),
+            os.path.join(cfg.train.log.log_dir, 'tb_trace'),
             worker_name=f'worker_{rank:02d}'
         ),
         record_shapes=True,

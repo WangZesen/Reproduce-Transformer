@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 from src.conf import Config
 
 
@@ -58,29 +58,44 @@ def initialize_dist() -> None:
         dist.barrier()
 
 
-def get_optim(cfg: "Config", model: Module) -> Optimizer:
+def get_optim_fn(cfg: Config) -> Callable[[List[Tuple[str, torch.Tensor]]], Optimizer]:
     match cfg.train.optim.name.lower():
         case "adam":
-            return torch.optim.Adam(model.parameters(),
-                                    lr=cfg.train.optim.lr,
-                                    betas=cfg.train.optim.betas,
-                                    eps=cfg.train.optim.eps)
+            def optim_fn(params: List[Tuple[str, torch.Tensor]]) -> Optimizer:
+                return torch.optim.Adam(params,
+                                        lr=cfg.train.optim.lr,
+                                        betas=cfg.train.optim.betas,
+                                        eps=cfg.train.optim.eps)
+            return optim_fn
         case _:
             raise ValueError(f"Unsupported optimizer: {cfg.train.optim.name}")
 
 
-def get_lr_scheduler(cfg: "Config", optimizer: Optimizer) -> LRScheduler:
+def get_optim(cfg: Config, model: Module) -> Optimizer:
+    optim_fn = get_optim_fn(cfg)
+    params = [(name, param) for name, param in model.named_parameters() if param.requires_grad]
+    return optim_fn(params)  # type: ignore
+
+
+def get_lr_scheduler_fn(cfg: Config) -> Callable[[Optimizer], LRScheduler]:
     match cfg.train.lr_scheduler.type.lower():
         case "inverse_sqrt":
-            def lr_lambda(step: int) -> float:
-                if step < cfg.train.lr_scheduler.warmup_steps:
-                    return (1 - cfg.train.lr_scheduler.warmup_decay) * (step + 1) / cfg.train.lr_scheduler.warmup_steps \
-                        + cfg.train.lr_scheduler.warmup_decay
-                else:
-                    return (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((step + 1) ** (-0.5))
-            return LambdaLR(optimizer, lr_lambda=lr_lambda)
+            def lr_scheduler_fn(optimizer: Optimizer) -> LRScheduler:
+                def lr_lambda(step: int) -> float:
+                    if step < cfg.train.lr_scheduler.warmup_steps:
+                        return (1 - cfg.train.lr_scheduler.warmup_decay) * (step + 1) / cfg.train.lr_scheduler.warmup_steps \
+                            + cfg.train.lr_scheduler.warmup_decay
+                    else:
+                        return (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((step + 1) ** (-0.5))
+                return LambdaLR(optimizer, lr_lambda=lr_lambda)
+            return lr_scheduler_fn
         case _:
             raise ValueError(f"Unsupported lr_scheduler: {cfg.train.lr_scheduler.type}")
+
+
+def get_lr_scheduler(cfg: "Config", optimizer: Optimizer) -> LRScheduler:
+    lr_scheduler_fn = get_lr_scheduler_fn(cfg)
+    return lr_scheduler_fn(optimizer)
 
 
 def gather_statistics(train_loss: float,
@@ -92,7 +107,7 @@ def gather_statistics(train_loss: float,
         object_list = [None for _ in range(dist.get_world_size())]
         dist.all_gather_object(object_list, log)
         for i in range(len(log)):
-            log[i] = mean([x[i] for x in object_list])
+            log[i] = mean([x[i] for x in object_list])  # type: ignore
     return log
 
 
@@ -123,7 +138,8 @@ def batch_beam_search(model: torch.nn.Module,
     src_lens = torch.sum(src != token_pad_id, dim=-1, keepdim=True)
     src_lens = torch.tile(src_lens, (1, beam_size)).view(batch_size * beam_size, 1) # (batch_size * beam_size, 1)
 
-    memory, src_padding_mask = model.get_memory(src.unsqueeze(1).repeat(1, beam_size, 1).view(batch_size * beam_size, -1)) # (batch_size * beam_size, src_seq_len, d_model)
+    # (batch_size * beam_size, src_seq_len, d_model) 
+    memory, src_padding_mask = model.get_memory(src.unsqueeze(1).repeat(1, beam_size, 1).view(batch_size * beam_size, -1))  # type: ignore
 
     output = {
         "tgt": torch.full((batch_size * beam_size, 1), token_sos_id, dtype=torch.int64, device=src.device),
@@ -134,7 +150,8 @@ def batch_beam_search(model: torch.nn.Module,
 
     for i in range(tolerance + src.size(1) + 1):
         # extract logprob of the lastest token
-        logit = model.get_tgt_from_memory(src_padding_mask, memory, output["tgt"]) # (batch_size * beam_size, tgt_seq_len, vocab_size)
+        # (batch_size * beam_size, tgt_seq_len, vocab_size)
+        logit = model.get_tgt_from_memory(src_padding_mask, memory, output["tgt"])  # type: ignore
         logprob = nn.functional.log_softmax(logit[:, -1, :], -1) # (batch_size * beam_size, vocab_size)
 
         # pick topk tokens at current step

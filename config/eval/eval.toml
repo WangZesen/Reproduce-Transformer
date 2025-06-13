@@ -1,3 +1,4 @@
+[eval]
 exp_dir = # experiment directory
 beam_size = 4
 length_penalty = 0.6

@@ -52,15 +52,10 @@ The table below reports the total number of iterations, the BLEU scores evaluate
 
 ### Python Environment
 
-Here is an instruction to setup a conda environment for the experiments.
+Here is an instruction to setup an environment for the experiments under a Linux system. The environment is managed by [uv](https://docs.astral.sh/uv/). Please check the uv's documentation for how to setup uv.
 
 ```bash
-conda create -n reproduce python=3.12
-conda activate reproduce
-# install the latest version of PyTorch
-pip3 install torch torchvision torchaudio
-# install other dependencies
-pip install wandb seaborn evaluate tokenizers loguru scipy tqdm tomli-w pydantic
+uv add torch torchvision torchaudio wandb seaborn evaluate tokenizers loguru scipy tqdm tomli-w pydantic
 ```
 
 > [!NOTE]
@@ -76,13 +71,13 @@ wandb login
 For WMT14 English-German dataset,
 ```
 sh script/preprocess/prepare-wmt14en2de.sh
-python -m src.preprocess --data-cfg config/data/wmt14_en_de.toml
+uv run python -m src.preprocess --cfg-list config/data/wmt14_en_de.toml
 ```
 
 For WMT14 English-French dataset,
 ```
 sh script/preprocess/prepare-wmt14en2fr.sh
-python -m src.preprocess --data-cfg config/data/wmt14_en_fr.toml
+uv run python -m src.preprocess --data-cfg config/data/wmt14_en_fr.toml
 ```
 
 ### Train
