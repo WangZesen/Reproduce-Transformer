@@ -85,6 +85,7 @@ class Optimizer(_BaseModel):
     lr: float = Field(default=0.0007)
     betas: Tuple[float, float] = Field(default=(0.9, 0.98))
     eps: float = Field(default=1e-9)
+    accum_iters: int = Field(default=4)
 
 
 class LRScheduler(_BaseModel):

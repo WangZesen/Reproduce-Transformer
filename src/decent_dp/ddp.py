@@ -223,11 +223,10 @@ class DecentralizedDataParallel(Module):
 
             # get the peers to communicate with in this iteration
             edge = self._topo.get_edge(self._step)
-            weight = edge.weight
 
-            # optionally call the pre_average_hook for optimizers using the communication information
-            if hasattr(self._optims[bucket_id], 'pre_average_hook'):
-                self._optims[bucket_id].pre_average_hook(edge, weight) # type: ignore
+            # # optionally call the pre_average_hook for optimizers using the communication information
+            # if hasattr(self._optims[bucket_id], 'pre_average_hook'):
+            #     self._optims[bucket_id].pre_average_hook(edge, weight) # type: ignore
 
             # replace the local model with the mixed model
             if self._param_as_bucket_view:

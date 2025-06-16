@@ -50,5 +50,5 @@ JOB_ID=$JOB_ID srun uv run torchrun \
     --rdzv-backend=c10d \
     --rdzv-id=$RANDOM \
     --rdzv-endpoint=$head_node_ip:28054 \
-    -m src.train --cfg-list $CONFIG_ARGS
+    -m src.decent_train --cfg-list $CONFIG_ARGS
 

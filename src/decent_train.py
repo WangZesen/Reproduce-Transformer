@@ -58,11 +58,10 @@ def get_mixing_factor(cfg: Config, step: int, steps_per_epoch: int) -> float:
             return 1.0
         else:
             assert cfg.train.lr_scheduler.type == 'inverse_sqrt'
-            min_lr = (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((cfg.train.max_epochs * steps_per_epoch + 1) ** (-0.5))
+            min_lr = 0.0 # (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((cfg.train.max_epochs * steps_per_epoch + 1) ** (-0.5))
             max_lr = 1.0
             lr = (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((step + 1) ** (-0.5))
             factor = ((lr - min_lr) / (max_lr - min_lr)) ** cfg.train.backend.adaptive_consensus_p
-            # logger.debug(f'Step: {step}, Min LR: {min_lr}, Max LR: {max_lr}, Current LR: {lr}, Factor: {factor}')
             return factor
 
 

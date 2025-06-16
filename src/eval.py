@@ -55,6 +55,7 @@ def main():
     '''
         Read the training and test logs
     '''
+    assert cfg.eval.exp_dir is not None, "Please specify the experiment directory in the configuration file."
 
     train_log_dir = os.path.join(cfg.eval.exp_dir, "train_log.csv")
     assert os.path.exists(train_log_dir), f"Train log file {train_log_dir} does not exist."

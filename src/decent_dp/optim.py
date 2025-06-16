@@ -305,7 +305,7 @@ class AccumAdam(torch.optim.Optimizer):
                  lr: float = 1e-3,
                  betas: Tuple[float, float] = (0.9, 0.999),
                  eps: float = 1e-8,
-                 weight_decay: float = 1. / 32768,
+                 weight_decay: float = 0.0,
                  accum_iter: int = 4):
         defaults = dict(
             lr=lr,

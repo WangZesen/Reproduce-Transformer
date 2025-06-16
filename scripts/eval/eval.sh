@@ -1,1 +1,1 @@
-screen srun -A $account --gpus-per-node=A40:1 -t 01:00:00 $(which python) src/eval.py --eval-cfg config/eval/eval.toml
+screen srun -A $account --gpus-per-node=A40:1 -t 01:00:00 uv run -m src.eval --cfg-list config/eval/eval.toml

@@ -62,10 +62,19 @@ def get_optim_fn(cfg: Config) -> Callable[[List[Tuple[str, torch.Tensor]]], Opti
     match cfg.train.optim.name.lower():
         case "adam":
             def optim_fn(params: List[Tuple[str, torch.Tensor]]) -> Optimizer:
-                return torch.optim.Adam(params,
+                return torch.optim.Adam([param for _, param in params],
                                         lr=cfg.train.optim.lr,
                                         betas=cfg.train.optim.betas,
                                         eps=cfg.train.optim.eps)
+            return optim_fn
+        case "accumadam":
+            from src.decent_dp.optim import AccumAdam
+            def optim_fn(params: List[Tuple[str, torch.Tensor]]) -> Optimizer:
+                return AccumAdam([param for _, param in params],
+                                 lr=cfg.train.optim.lr,
+                                 betas=cfg.train.optim.betas,
+                                 eps=cfg.train.optim.eps,
+                                 accum_iter=cfg.train.optim.accum_iters)
             return optim_fn
         case _:
             raise ValueError(f"Unsupported optimizer: {cfg.train.optim.name}")
