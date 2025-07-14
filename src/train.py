@@ -14,7 +14,7 @@ import wandb
 import torch
 import tomli_w
 import pandas as pd
-from src.utils import SmoothedValue, initialize_dist, get_optim, get_lr_scheduler, gather_statistics
+from src.utils import SmoothedValue, initialize_dist, get_optim, get_lr_scheduler, gather_statistics, get_run_name, get_group_name
 from src.conf import Config, parse_config, SPECIAL_TOKENS
 from src.data import get_datasets, get_dataloaders
 from src.model import get_model
@@ -194,7 +194,8 @@ def main():
         if cfg.train.log.wandb_on:
             wandb.init(project=cfg.train.log.wandb_project,
                        config=cfg.model_dump(),
-                       name=cfg.train.log.job_id,
+                       name=get_run_name(cfg),
+                       group=get_group_name(cfg),
                        dir=os.environ['TMPDIR'])
         logger.info(model)
         with open(os.path.join(cfg.train.log.log_dir, 'data_cfg.dump.toml'), 'wb') as f:

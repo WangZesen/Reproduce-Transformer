@@ -1,0 +1,3 @@
+[train.backend]
+adaptive_consensus_omega = 1.0
+adaptive_consensus_p = 3.0

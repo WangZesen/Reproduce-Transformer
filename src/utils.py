@@ -201,3 +201,33 @@ def batch_beam_search(model: torch.nn.Module,
     
     return output["seq_lens"], output["tgt"]
 
+
+def get_group_name(cfg: Config) -> str:
+    """Generate a group name based on the configuration."""
+    name = ""
+    if cfg.train.model.d_model == 512:
+        name += "base - "
+    else:
+        name += "big - "
+    
+    if cfg.train.backend.name == "decent_dp":
+        if cfg.train.optim.name == "adam":
+            name += f"d-{cfg.train.optim.name.lower()}"
+        elif cfg.train.optim.name == "accumadam":
+            name += f"d-{cfg.train.optim.name.lower()}@{cfg.train.optim.accum_iters}"
+        else:
+            raise ValueError(f"Unsupported optimizer for decent_dp: {cfg.train.optim.name}")
+        if cfg.train.backend.adaptive_consensus_omega > 0:
+            name += f" - ac {cfg.train.backend.adaptive_consensus_omega}@{cfg.train.backend.adaptive_consensus_p} - {cfg.train.backend.topology}"
+    else:
+        name += f"{cfg.train.optim.name.lower()}"
+
+    return name
+
+
+def get_run_name(cfg: Config) -> str:
+    """Generate a unique run name based on the configuration."""
+    name = get_group_name(cfg)
+    name += f" - {cfg.train.log.job_id} - {cfg.train.reproduce.seed}"
+    return name
+

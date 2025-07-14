@@ -1,4 +1,5 @@
 import os
+import glob
 import argparse
 import tomllib
 import hashlib
@@ -96,8 +97,8 @@ class LRScheduler(_BaseModel):
 
 class Log(_BaseModel):
     log_freq: int = Field(default=250)
-    wandb_on: bool = Field(default=False)
-    wandb_project: str = Field(default='Reproduce-Transformer')
+    wandb_on: bool = Field(default=True)
+    wandb_project: str = Field(default='dsam-transformer')
     checkpoint_freq: int = Field(default=2)
 
     @computed_field
@@ -198,4 +199,37 @@ def parse_config() -> Config:
     for cfg in raw_cfgs:
         raw_cfg = _merge(raw_cfg, cfg)
 
+    return Config.model_validate(raw_cfg)
+
+
+def parse_eval_config() -> Config:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--cfg-list",
+        nargs="+",
+        required=False,
+        help="List of configurations to override",
+    )
+    args = parser.parse_args()
+
+    if args.cfg_list is None:
+        return Config()
+    raw_cfgs = [_load_toml(cfg_dir) for cfg_dir in args.cfg_list]
+    raw_cfg = {}
+    for cfg in raw_cfgs:
+        raw_cfg = _merge(raw_cfg, cfg)
+
+    cfg = Config.model_validate(raw_cfg)
+
+    if cfg.eval.exp_dir is None:
+        raise ValueError("Please specify the experiment directory in the configuration file.")
+
+    other_cfgs = sorted(glob.glob(os.path.join(cfg.eval.exp_dir, 'config', '*.toml')), key=lambda x: int(x.split('/')[-1].split('_')[0]))
+    all_cfgs = other_cfgs + args.cfg_list
+
+    raw_cfgs = [_load_toml(cfg_dir) for cfg_dir in all_cfgs]
+    raw_cfg = {}
+    for cfg in raw_cfgs:
+        raw_cfg = _merge(raw_cfg, cfg)
+    
     return Config.model_validate(raw_cfg)

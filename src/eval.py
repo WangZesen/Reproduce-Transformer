@@ -1,10 +1,11 @@
 import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 import sys
+import wandb
 import numpy as np
 import torch
 from tqdm import tqdm
-from src.conf import SPECIAL_TOKENS, parse_config
+from src.conf import SPECIAL_TOKENS, parse_eval_config
 import pandas as pd
 from src.model import get_model
 from src.data import get_dataset, get_dataloader
@@ -49,7 +50,7 @@ def main():
     '''
         Load configuration
     '''
-    cfg = parse_config()
+    cfg = parse_eval_config()
     cfg.train.max_tokens_per_local_batch = 512
 
     '''
@@ -113,7 +114,7 @@ def main():
             continue
 
         checkpoint_dir = train_log.iloc[i]['checkpoint_dir']
-        if (len(checkpoint_dir) == 0) or (not os.path.exists(checkpoint_dir)) or (not os.path.isfile(checkpoint_dir)):
+        if (not isinstance(checkpoint_dir, str)) or (len(checkpoint_dir) == 0) or (not os.path.exists(checkpoint_dir)) or (not os.path.isfile(checkpoint_dir)):
             logger.info(f'Skip epoch {train_log.iloc[i]["epoch"]} as the checkpoint does not exist.')
             out_log.loc[cnt] = train_log.iloc[i].values.tolist() + [pd.NA]
             cnt += 1
@@ -158,7 +159,7 @@ def main():
 
         result = bleu.compute(predictions=predictions, references=references)
         values = train_log.iloc[i].values.tolist()
-        values.append(result['bleu'])
+        values.append(result['bleu'])  # type: ignore
 
         out_log.loc[cnt] = values
         cnt += 1
@@ -173,6 +174,35 @@ def main():
         with open(os.path.join(cfg.eval.exp_dir, 'inference', f'{train_log.iloc[i]["epoch"]}.hyp.txt'), 'w') as f:
             for hyp in predictions:
                 f.write(hyp + '\n')
+    
+    if cfg.train.log.wandb_on:
+        wandb_id = None
+        with open(os.path.join(cfg.eval.exp_dir, 'err.out'), 'r') as f:
+            line = f.readline()
+            while line:
+                if "View run at " in line:
+                    wandb_id = line.split("View run at ")[-1].split('/')[-1].strip(' \n')
+                    break
+                line = f.readline()        
+        assert wandb_id is not None, "WandB ID not found in the error log."
+
+        run = wandb.init(
+            project=cfg.train.log.wandb_project,
+            id=wandb_id,
+            resume='must',
+            dir=os.environ.get('TMPDIR', '/tmp')
+        )
+
+        run.define_metric("BLEU", step_metric="eval_step")
+
+        for i in range(len(out_log)):
+            if (out_log.iloc[i]['BLEU Score'] is not None) and (not pd.isna(out_log.iloc[i]['BLEU Score'])):
+                run.log({
+                    'BLEU': out_log.iloc[i]['BLEU Score'],
+                    'eval_step': int(out_log.iloc[i]['step'])
+                })
+                print(f"Logged BLEU score {out_log.iloc[i]['BLEU Score']} at step {out_log.iloc[i]['step']}.")
+        wandb.finish()
 
 
 if __name__ == '__main__':
