@@ -2,11 +2,11 @@
 name = "decent_dp"
 topology = "ring"
 
-# [train.optim]
+[train.optim]
 # name = "accumadam"
 # accum_iters = 4
-# lr = 0.0008
-# betas = [0.9, 0.999]
+lr = 0.0020
+betas = [0.9, 0.999]
 
 [train]
-use_amp = true
+use_amp = false
