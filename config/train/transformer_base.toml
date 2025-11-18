@@ -26,7 +26,6 @@ warmup_decay = 0.01
 [train.log]
 log_freq = 250
 wandb_on = true
-wandb_project = "dsam-transformer"
 checkpoint_freq = 1
 
 [train.reproduce]

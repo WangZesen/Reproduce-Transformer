@@ -54,14 +54,15 @@ def get_mixing_factor(cfg: Config, step: int, steps_per_epoch: int) -> float:
     if cfg.train.backend.adaptive_consensus_omega == 0.0:
         return 1.0
     else:
-        if step <= cfg.train.lr_scheduler.warmup_steps:
+        if (step <= cfg.train.lr_scheduler.warmup_steps) or (step <= cfg.train.backend.ac_start_step):
             return 1.0
         else:
             assert cfg.train.lr_scheduler.type == 'inverse_sqrt'
             min_lr = 0.0 # (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((cfg.train.max_epochs * steps_per_epoch + 1) ** (-0.5))
-            max_lr = 1.0
+            max_lr = (cfg.train.lr_scheduler.warmup_steps ** 0.5) * (cfg.train.backend.ac_start_step ** (-0.5))
             lr = (cfg.train.lr_scheduler.warmup_steps ** 0.5) * ((step + 1) ** (-0.5))
             factor = ((lr - min_lr) / (max_lr - min_lr)) ** cfg.train.backend.adaptive_consensus_p
+            factor = factor * cfg.train.backend.adaptive_consensus_omega + (1.0 - cfg.train.backend.adaptive_consensus_omega)
             return factor
 
 
@@ -106,12 +107,13 @@ def train_epoch(cfg: Config,
 
         if rank == 0:
             if cfg.train.log.wandb_on and (step % cfg.train.log.log_freq == 0):
-                wandb.log({'loss': loss_metric.avg, 'lr': lr, 'tpb': tpb_metric.avg, 'perplexity': perplexity_metric.avg}, step=step)
+                wandb.log({'loss': loss_metric.avg, 'lr': lr, 'tpb': tpb_metric.avg, 'perplexity': perplexity_metric.avg, 'mixing_factor': model._mixing_factor}, step=step)
 
             if step % cfg.train.log.log_freq == 0:
                 epoch_step = batch_idx + 1
                 logger.info(f'step: {step} ({(time.time() - start_time) / epoch_step:5.2f} s/it), loss: {loss_metric.avg:.6f}, perplexity: {perplexity_metric.avg:.6f}' + \
-                        f', lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}, mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB')
+                        f', lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}, mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB'
+                        f', mixing_factor: {model._mixing_factor:.6f}')
         
         # set mixing factor for adaptive consensus
         model.set_mixing_factor(get_mixing_factor(cfg, step, total_step))
@@ -255,10 +257,7 @@ def main():
                                                                                       scaler,
                                                                                       p)
             total_train_time += epoch_train_time
-            if cfg.train.backend.adaptive_consensus_omega == 0.0:
-                model.global_avg()
-            else:
-                model.global_avg(may_revert=True)
+            model.global_avg(may_revert=True)
             val_loss, val_perplexity = valid(cfg, epoch, model, val_ds, criterion)
             stats = gather_statistics(train_loss, train_perplexity, val_loss, val_perplexity)
 
@@ -295,9 +294,8 @@ def main():
                                                       total_train_time,
                                                       os.path.abspath(checkpoint_dir) if checkpoint_dir else '']
                 train_log.to_csv(os.path.join(cfg.train.log.log_dir, 'train_log.csv'), index=False) # type: ignore
-            
-            if cfg.train.backend.adaptive_consensus_omega != 0.0:
-                model.revert_global_avg()
+
+            model.revert_global_avg()
 
             dist.barrier()
 

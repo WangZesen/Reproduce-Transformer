@@ -98,7 +98,7 @@ class LRScheduler(_BaseModel):
 class Log(_BaseModel):
     log_freq: int = Field(default=250)
     wandb_on: bool = Field(default=True)
-    wandb_project: str = Field(default='dsam-transformer')
+    wandb_project: str = Field(default='dsam-transformer2')
     checkpoint_freq: int = Field(default=2)
 
     @computed_field
@@ -120,6 +120,7 @@ class DecentDPBackend(_BaseModel):
     topology: Literal['complete', 'ring'] = Field(default='complete')
     adaptive_consensus_omega: float = Field(default=0.0)
     adaptive_consensus_p: float = Field(default=3.0)
+    ac_start_step: int = Field(default=4000)
 
 ALL_BACKENDS = Union[PyTorchDDPBackend, DecentDPBackend]
 
