@@ -96,13 +96,18 @@ class LRScheduler(_BaseModel):
 class Log(_BaseModel):
     log_freq: int = Field(default=250)
     wandb_on: bool = Field(default=True)
-    wandb_project: str = Field(default="dsam-transformer")
-    checkpoint_freq: int = Field(default=2)
+    wandb_project: str = Field(default="reproduce-transformer")
+    checkpoint_freq: int = Field(default=1)
 
     @computed_field
     @cached_property
     def job_id(self) -> str:
-        return os.environ.get("JOB_ID", "0")
+        if "JOB_ID" in os.environ:
+            return os.environ["JOB_ID"]
+        elif "SLURM_JOB_ID" in os.environ:
+            return os.environ["SLURM_JOB_ID"]
+        else:
+            return "local_job"
 
     @computed_field
     @property

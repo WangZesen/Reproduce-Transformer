@@ -1,12 +1,13 @@
-import os
-from statistics import mean
-import torch.distributed as dist
-from collections import deque
-from loguru import logger
 import torch
 from torch.nn import Module
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+import os
+import subprocess
+from loguru import logger
+from statistics import mean
+from collections import deque
+import torch.distributed as dist
 from typing import List, Tuple, Callable
 from src.conf import Config
 
@@ -49,8 +50,22 @@ class SmoothedValue:
         return self.fmt.format(avg=self.avg, global_avg=self.global_avg)
 
 
-def initialize_dist() -> None:
+def initialize() -> None:
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     if ("WORLD_SIZE" in os.environ) and dist.is_available() and not dist.is_initialized():
+        local_rank = int(os.environ["LOCAL_RANK"])
+        devices = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
+        os.environ["CUDA_VISIBLE_DEVICES"] = devices[local_rank]
+
+        try:
+            gpus = subprocess.check_output(["nvidia-smi", "-L"]).decode("utf-8")
+            if "T4" in gpus:
+                os.environ["NCCL_IB_HCA"] = "mlx5"
+        except subprocess.CalledProcessError:
+            pass
+
         dist.init_process_group(backend="nccl")
         if dist.get_rank() == 0:
             logger.info(f"Initialized the process group with {dist.get_world_size()} processes.")
@@ -106,15 +121,15 @@ def get_lr_scheduler(cfg: "Config", optimizer: Optimizer) -> LRScheduler:
 
 
 def gather_statistics(
-    train_loss: float, train_perplexity: float, val_loss: float, val_perplexity: float
-) -> List[float]:
-    log = [train_loss, train_perplexity, val_loss, val_perplexity]
+    *args: float,
+) -> Tuple[float, ...]:
+    log = list(args)
     if dist.is_available() and dist.is_initialized():
         object_list = [None for _ in range(dist.get_world_size())]
         dist.all_gather_object(object_list, log)
         for i in range(len(log)):
             log[i] = mean([x[i] for x in object_list])  # type: ignore
-    return log
+    return tuple(log)
 
 
 def get_group_name(cfg: Config) -> str:
