@@ -11,21 +11,18 @@ from src.conf import Config
 
 
 class WMTDataset(Dataset):
-    def __init__(self,
-                 cfg: "Config",
-                 tokenizer_dir: str,
-                 split: str = "train"):
+    def __init__(self, cfg: "Config", tokenizer_dir: str, split: str = "train"):
 
         rank = 0
         if dist.is_available() and dist.is_initialized():
             rank = dist.get_rank()
-        
+
         if rank == 0:
-            logger.info(f"{'='*30} Loading {split} data {'='*30}")
+            logger.info(f"{'=' * 30} Loading {split} data {'=' * 30}")
 
         src_file = os.path.join(tokenizer_dir, f"{split}.{cfg.data.src_lang}")
         tgt_file = os.path.join(tokenizer_dir, f"{split}.{cfg.data.tgt_lang}")
-        
+
         start_time = time.time()
         self._src_start_pos, self._src_len, self._src_raw = self.load_from_bin(src_file)
         self._tgt_start_pos, self._tgt_len, self._tgt_raw = self.load_from_bin(tgt_file)
@@ -44,15 +41,15 @@ class WMTDataset(Dataset):
             logger.info(f"Time elapsed for loading the data: {elapsed_time:.2f} seconds")
 
     def load_from_bin(self, data_dir: str):
-        with open(data_dir, 'rb') as f:
+        with open(data_dir, "rb") as f:
             data = f.read()
-        
+
         start_pos = []
         lengths = []
 
         pos = 0
         while pos < len(data) - 1:
-            length = struct.unpack(">i", data[pos:pos+4])[0]
+            length = struct.unpack(">i", data[pos : pos + 4])[0]
             lengths.append(length)
             pos += 4
             start_pos.append(pos)
@@ -64,8 +61,18 @@ class WMTDataset(Dataset):
         return len(self._src_len)
 
     def __getitem__(self, i: int):
-        src_sample = list(struct.unpack('H' * self._src_len[i], self._src_raw[self._src_start_pos[i]:self._src_start_pos[i] + 2*self._src_len[i]]))
-        tgt_sample = list(struct.unpack('H' * self._tgt_len[i], self._tgt_raw[self._tgt_start_pos[i]:self._tgt_start_pos[i] + 2*self._tgt_len[i]]))
+        src_sample = list(
+            struct.unpack(
+                "H" * self._src_len[i],
+                self._src_raw[self._src_start_pos[i] : self._src_start_pos[i] + 2 * self._src_len[i]],
+            )
+        )
+        tgt_sample = list(
+            struct.unpack(
+                "H" * self._tgt_len[i],
+                self._tgt_raw[self._tgt_start_pos[i] : self._tgt_start_pos[i] + 2 * self._tgt_len[i]],
+            )
+        )
         # pad at the batch level.
         return torch.tensor(src_sample), torch.tensor(tgt_sample)
 
@@ -74,12 +81,10 @@ class WMTDataset(Dataset):
 
 
 def get_datasets(cfg: "Config", tokenizer_dir: str) -> Tuple[WMTDataset, WMTDataset]:
-    train_ds, valid_ds =  WMTDataset(cfg, tokenizer_dir, split="train"), \
-        WMTDataset(cfg, tokenizer_dir, split="valid")
+    train_ds, valid_ds = WMTDataset(cfg, tokenizer_dir, split="train"), WMTDataset(cfg, tokenizer_dir, split="valid")
     return train_ds, valid_ds
 
 
 def get_dataset(cfg: "Config", tokenizer_dir: str, split: str = "test") -> WMTDataset:
     test_ds = WMTDataset(cfg, tokenizer_dir, split=split)
     return test_ds
-

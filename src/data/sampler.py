@@ -6,12 +6,9 @@ from src.data.dataset import WMTDataset
 from loguru import logger
 import time
 
+
 class DistributedTokenBatchSampler(Sampler[List[int]]):
-    def __init__(self,
-                 dataset: "WMTDataset",
-                 seed: int,
-                 max_tokens: int,
-                 shuffle: bool = False):
+    def __init__(self, dataset: "WMTDataset", seed: int, max_tokens: int, shuffle: bool = False):
         self._dataset = dataset
         self._seed = seed
         self._max_tokens = max_tokens
@@ -43,7 +40,7 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             src_num_tokens += data[i][0]
             tgt_num_tokens += data[i][1]
             batch.append(data[i][2])
-            
+
             if (src_num_tokens + tgt_num_tokens > self._max_tokens * 2) or (i == len(data) - 1):
                 batches.append(batch)
                 batch = []

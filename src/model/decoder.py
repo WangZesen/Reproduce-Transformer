@@ -1,18 +1,11 @@
-import math
 import torch
 import torch.nn as nn
-from tokenizers import Tokenizer
-from src.conf import Config
 from src.model.common import PositionwiseFeedForward, FlashAttention
 from typing import Optional, Tuple
 
+
 class TransformerDecoderLayer(nn.Module):
-    def __init__(self,
-                 d_model: int,
-                 num_heads: int,
-                 d_feedforward: int,
-                 dropout: float = 0.3,
-                 bias: bool = True):
+    def __init__(self, d_model: int, num_heads: int, d_feedforward: int, dropout: float = 0.3, bias: bool = True):
         super().__init__()
         self._self_attn = FlashAttention(d_model, num_heads, is_cross_attention=False, dropout=dropout)
         self._cross_attn = FlashAttention(d_model, num_heads, is_cross_attention=True, dropout=dropout)
@@ -20,16 +13,18 @@ class TransformerDecoderLayer(nn.Module):
         self._norm1 = nn.LayerNorm(d_model)
         self._norm2 = nn.LayerNorm(d_model)
         self._norm3 = nn.LayerNorm(d_model)
-    
-    def forward(self,
-                tgt: torch.Tensor,
-                memory: torch.Tensor,
-                cu_src_lens: torch.Tensor,
-                cu_tgt_lens: torch.Tensor,
-                max_src_len: int,
-                max_tgt_len: int,
-                past_key_value: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
-                use_cache: bool = False):
+
+    def forward(
+        self,
+        tgt: torch.Tensor,
+        memory: torch.Tensor,
+        cu_src_lens: torch.Tensor,
+        cu_tgt_lens: torch.Tensor,
+        max_src_len: int,
+        max_tgt_len: int,
+        past_key_value: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
+        use_cache: bool = False,
+    ):
         # 1. Causal self-attention
         norm_x = self._norm1(tgt)
         self_past_kv = past_key_value[0] if past_key_value is not None else None
@@ -39,7 +34,7 @@ class TransformerDecoderLayer(nn.Module):
             max_seqlen_q=max_tgt_len,
             is_causal=True,
             past_key_value=self_past_kv,
-            use_cache=use_cache
+            use_cache=use_cache,
         )
         tgt = tgt + self_attn_output
 
@@ -55,7 +50,7 @@ class TransformerDecoderLayer(nn.Module):
             max_seqlen_k=max_src_len,
             is_causal=False,
             past_key_value=cross_past_kv,
-            use_cache=use_cache
+            use_cache=use_cache,
         )
         tgt = tgt + cross_attn_output
 

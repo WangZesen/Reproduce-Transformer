@@ -6,7 +6,9 @@ from src.conf import Config
 from src.data.sampler import DistributedTokenBatchSampler
 
 
-def unbatched_collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int, torch.Tensor, int]:
+def unbatched_collate_fn(
+    batch: List[Tuple[torch.Tensor, torch.Tensor]],
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int, torch.Tensor, int]:
     src_batch, tgt_batch = zip(*batch)
     src_packed = torch.cat(src_batch)
     # remove the last token (EOS) from target sequences for teacher forcing
@@ -20,12 +22,11 @@ def unbatched_collate_fn(batch: List[Tuple[torch.Tensor, torch.Tensor]]) -> Tupl
     return src_packed, tgt_packed, cum_src_lengths, cum_tgt_lengths, max_src_len, max_tgt_len, label_packed, len(batch)
 
 
-def get_dataloaders(cfg: Config,
-                   train_dataset: WMTDataset,
-                   val_dataset: WMTDataset,
-                   train_shuffle: bool = True) -> Tuple[DataLoader, DataLoader]:
+def get_dataloaders(
+    cfg: Config, train_dataset: WMTDataset, val_dataset: WMTDataset, train_shuffle: bool = True
+) -> Tuple[DataLoader, DataLoader]:
     assert cfg.train is not None
-    
+
     train_sampler = DistributedTokenBatchSampler(
         dataset=train_dataset,
         seed=cfg.train.seed,
@@ -45,20 +46,13 @@ def get_dataloaders(cfg: Config,
         pin_memory=True,
         num_workers=1,
         prefetch_factor=1,
-        persistent_workers=True
+        persistent_workers=True,
     )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_sampler=val_sampler,
-        collate_fn=unbatched_collate_fn,
-        pin_memory=True
-    )
+    val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, collate_fn=unbatched_collate_fn, pin_memory=True)
     return train_loader, val_loader
 
 
-def get_dataloader(cfg: Config,
-                   dataset: WMTDataset,
-                   shuffle: bool = False) -> DataLoader:
+def get_dataloader(cfg: Config, dataset: WMTDataset, shuffle: bool = False) -> DataLoader:
     assert cfg.train is not None
 
     sampler = DistributedTokenBatchSampler(
@@ -67,10 +61,5 @@ def get_dataloader(cfg: Config,
         max_tokens=cfg.train.max_tokens_per_local_batch,
         shuffle=shuffle,
     )
-    loader = DataLoader(
-        dataset,
-        batch_sampler=sampler,
-        collate_fn=unbatched_collate_fn,
-        pin_memory=True
-    )
+    loader = DataLoader(dataset, batch_sampler=sampler, collate_fn=unbatched_collate_fn, pin_memory=True)
     return loader

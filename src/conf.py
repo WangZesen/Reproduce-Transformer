@@ -8,12 +8,14 @@ from pydantic import BaseModel, Field, computed_field, ConfigDict
 from loguru import logger
 from functools import cached_property
 
-PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), '..'), '.')
+PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), ".."), ".")
+
+
 class SPECIAL_TOKENS:
-    PAD = '[PAD]'
-    UNK = '[UNK]'
-    SOS = '[SOS]'
-    EOS = '[EOS]'
+    PAD = "[PAD]"
+    UNK = "[UNK]"
+    SOS = "[SOS]"
+    EOS = "[EOS]"
     ALL = [PAD, UNK, SOS, EOS]
 
 
@@ -22,15 +24,15 @@ class _BaseModel(BaseModel):
 
 
 class Tokenizer(_BaseModel):
-    model: str = Field(default='bpe')
+    model: str = Field(default="bpe")
     vocab_size: int = Field(default=37120)
     min_freq: int = Field(default=2)
 
 
 class Data(_BaseModel):
-    data_dir: str = Field(default=os.path.join(PROJECT_DIR, 'data', 'wmt14_en_de'))
-    src_lang: str = Field(default='en')
-    tgt_lang: str = Field(default='de')
+    data_dir: str = Field(default=os.path.join(PROJECT_DIR, "data", "wmt14_en_de"))
+    src_lang: str = Field(default="en")
+    tgt_lang: str = Field(default="de")
     truncate: int = Field(default=156)
     tokenizer: Tokenizer = Field(default_factory=Tokenizer)
 
@@ -49,22 +51,22 @@ class Network(_BaseModel):
     @computed_field(repr=False)
     @property
     def world_size(self) -> int:
-        return int(os.environ.get('WORLD_SIZE', '1'))
+        return int(os.environ.get("WORLD_SIZE", "1"))
 
     @computed_field(repr=False)
     @property
     def rank(self) -> int:
-        return int(os.environ.get('RANK', '0'))
-    
+        return int(os.environ.get("RANK", "0"))
+
     @computed_field(repr=False)
     @property
     def local_rank(self) -> int:
-        return int(os.environ.get('LOCAL_RANK', '0'))
-    
+        return int(os.environ.get("LOCAL_RANK", "0"))
+
     @computed_field(repr=False)
     @property
     def local_world_size(self) -> int:
-        return int(os.environ.get('LOCAL_WORLD_SIZE', '1'))
+        return int(os.environ.get("LOCAL_WORLD_SIZE", "1"))
 
 
 class Model(_BaseModel):
@@ -76,16 +78,17 @@ class Model(_BaseModel):
 
 
 class AdamConfig(_BaseModel):
-    name: Literal['adam'] = Field(default='adam')
+    name: Literal["adam"] = Field(default="adam")
     lr: float = Field(default=0.0007)
     betas: Tuple[float, float] = Field(default=(0.9, 0.98))
-    eps: float = Field(default=1e-9)            
+    eps: float = Field(default=1e-9)
+
 
 OPTIMIZERS = Union[AdamConfig]
 
 
 class LRScheduler(_BaseModel):
-    type: str = Field(default='inverse_sqrt')
+    type: str = Field(default="inverse_sqrt")
     warmup_steps: int = Field(default=4000)
     warmup_decay: float = Field(default=0.01)
 
@@ -93,22 +96,23 @@ class LRScheduler(_BaseModel):
 class Log(_BaseModel):
     log_freq: int = Field(default=250)
     wandb_on: bool = Field(default=True)
-    wandb_project: str = Field(default='dsam-transformer')
+    wandb_project: str = Field(default="dsam-transformer")
     checkpoint_freq: int = Field(default=2)
 
     @computed_field
     @cached_property
     def job_id(self) -> str:
-        return os.environ.get('JOB_ID', '0')
+        return os.environ.get("JOB_ID", "0")
 
     @computed_field
     @property
     def log_dir(self) -> str:
-        return os.path.join(PROJECT_DIR, 'log', self.job_id)
+        return os.path.join(PROJECT_DIR, "log", self.job_id)
 
 
 class PyTorchDDPBackend(_BaseModel):
-    name: Literal['pytorch_ddp'] = Field(default='pytorch_ddp')
+    name: Literal["pytorch_ddp"] = Field(default="pytorch_ddp")
+
 
 BACKENDS = Union[PyTorchDDPBackend]
 
@@ -163,9 +167,7 @@ def _merge(a: dict, b: dict, path=[]):
                 _merge(a[key], b[key], path + [str(key)])
             elif a[key] != b[key]:
                 a[key] = b[key]
-                logger.warning(
-                    f"Overriding {'.'.join(path + [str(key)])} with {b[key]}"
-                )
+                logger.warning(f"Overriding {'.'.join(path + [str(key)])} with {b[key]}")
         else:
             a[key] = b[key]
     return a
@@ -213,12 +215,14 @@ def parse_eval_config() -> Config:
     if cfg.eval.exp_dir is None:
         raise ValueError("Please specify the experiment directory in the configuration file.")
 
-    other_cfgs = sorted(glob.glob(os.path.join(cfg.eval.exp_dir, 'config', '*.toml')), key=lambda x: int(x.split('/')[-1].split('_')[0]))
+    other_cfgs = sorted(
+        glob.glob(os.path.join(cfg.eval.exp_dir, "config", "*.toml")), key=lambda x: int(x.split("/")[-1].split("_")[0])
+    )
     all_cfgs = other_cfgs + args.cfg_list
 
     raw_cfgs = [_load_toml(cfg_dir) for cfg_dir in all_cfgs]
     raw_cfg = {}
     for cfg in raw_cfgs:
         raw_cfg = _merge(raw_cfg, cfg)
-    
+
     return Config.model_validate(raw_cfg)
