@@ -10,7 +10,6 @@ betas = [0.9, 0.98]
 eps = 1e-9
 
 [train.model]
-arch = "transformer"
 d_model = 512
 num_heads = 8
 num_layers = 6
