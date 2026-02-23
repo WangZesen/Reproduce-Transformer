@@ -239,4 +239,4 @@ def parse_eval_config() -> Config:
 def dump_config(cfg: Config, output_dir: str) -> None:
     os.makedirs(os.path.dirname(output_dir), exist_ok=True)
     with open(output_dir, "wb") as f:
-        tomli_w.dump(cfg.model_dump(), f)
+        tomli_w.dump(cfg.model_dump(exclude_none=True), f)
