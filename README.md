@@ -6,7 +6,9 @@
 
 ## Introduction
 
-This repo is an unofficial reproduction of the experiments conducted in the paper "Attention is All You Need" [[1](#reference)] based on PyTorch 2.10.0. The training, validation and test sets are from WMT14 [[2](#reference)]. The idea is to provide a code base for algorithm verification and easy adaptation for this classic and well-studied machine learning task.
+This repo is an unofficial reproduction of the experiments conducted in the paper "Attention is All You Need" [[1](#reference)] based on PyTorch 2.9.1. The training, validation and test sets are from WMT14 [[2](#reference)]. The idea is to provide a code base for algorithm verification and easy adaptation for this classic and well-studied machine learning task.
+
+The repo adopts the [automatic precision training (AMP)](https://docs.pytorch.org/docs/stable/amp.html) with `bfloat16` by default (*better performance with Ampere GPUs*), and it makes use of [`flash_attn_varlen_func`](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#20-complete-rewrite-2x-faster) for efficient computation with batches with varying lengths. Compared with the original paper, the model architecture has slight differences: 1. it uses pre-layernorm style instead of post-LN, and 2. except for the embedding layers, the initialization follows the PyTorch's defaults. 
 
 ## Reproduced Results
 
