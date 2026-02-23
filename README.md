@@ -1,7 +1,8 @@
 # Reproduce [*Attention is All You Need*](https://proceedings.neurips.cc/paper/2017/file/3f5ee243547dee91fbd053c1c4a845aa-Paper.pdf) (PyTorch)
 
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.9.0-EE4C2C?style=flat&logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
-[![Flash Attention](https://img.shields.io/badge/Flash_Attention_2-2.8.3-blue?style=flat&logo=lightning)](https://github.com/Dao-AILab/flash-attention)
+![PyTorch](https://img.shields.io/badge/PyTorch-2.9.0-EE4C2C?style=flat&logo=pytorch&logoColor=white)
+![Flash Attention](https://img.shields.io/badge/Flash_Attention_2-2.8.3-blue?style=flat&logo=lightning)
+![AMP](https://img.shields.io/badge/Precision-AMP-EE4C2C?style=flat&logo=pytorch&logoColor=white)
 
 ## Introduction
 
