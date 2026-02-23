@@ -23,6 +23,8 @@ class TransformerDecoderLayer(nn.Module):
         max_src_len: int,
         max_tgt_len: int,
         past_key_value: Optional[Tuple[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]] = None,
+        cu_key_lens: Optional[torch.Tensor] = None,
+        max_key_len: Optional[int] = None,
         use_cache: bool = False,
     ):
         # 1. Causal self-attention
@@ -31,8 +33,10 @@ class TransformerDecoderLayer(nn.Module):
         self_attn_output, self_kv_output = self._self_attn(
             hidden_states=norm_x,
             cu_seqlens_q=cu_tgt_lens,
+            cu_seqlens_k=cu_key_lens,
             max_seqlen_q=max_tgt_len,
-            is_causal=True,
+            max_seqlen_k=max_key_len,
+            is_causal=not use_cache,
             past_key_value=self_past_kv,
             use_cache=use_cache,
         )

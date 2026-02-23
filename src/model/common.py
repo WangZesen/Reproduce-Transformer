@@ -26,10 +26,10 @@ class FlashAttention(nn.Module):
         self._is_cross_attention = is_cross_attention
         self._dropout_rate = dropout
 
-        self._q_proj = nn.Linear(d_model, d_model, bias=False)
-        self._k_proj = nn.Linear(d_model, d_model, bias=False)
-        self._v_proj = nn.Linear(d_model, d_model, bias=False)
-        self._out_proj = nn.Linear(d_model, d_model, bias=False)
+        self._q_proj = nn.Linear(d_model, d_model, bias=True)
+        self._k_proj = nn.Linear(d_model, d_model, bias=True)
+        self._v_proj = nn.Linear(d_model, d_model, bias=True)
+        self._out_proj = nn.Linear(d_model, d_model, bias=True)
 
     def forward(
         self,
@@ -57,8 +57,19 @@ class FlashAttention(nn.Module):
             if self._is_cross_attention:
                 k, v = k_cache, v_cache
             else:
-                k = torch.cat([k_cache, k], dim=0)
-                v = torch.cat([v_cache, v], dim=0)
+                k_cache = k_cache.view(k.size(0), -1, self._num_heads, self._d_head)
+                v_cache = v_cache.view(v.size(0), -1, self._num_heads, self._d_head)
+
+                k = (
+                    torch.cat([k_cache, k.view(k.size(0), 1, self._num_heads, self._d_head)], dim=1)
+                    .contiguous()
+                    .view(-1, self._num_heads, self._d_head)
+                )
+                v = (
+                    torch.cat([v_cache, v.view(v.size(0), 1, self._num_heads, self._d_head)], dim=1)
+                    .contiguous()
+                    .view(-1, self._num_heads, self._d_head)
+                )
 
         if use_cache:
             past_key_value = (k.detach(), v.detach())
@@ -72,7 +83,7 @@ class FlashAttention(nn.Module):
             max_seqlen_q=max_seqlen_q,
             max_seqlen_k=max_seqlen_k if max_seqlen_k is not None else max_seqlen_q,
             causal=is_causal,
-            dropout_p=self._dropout_rate if self.training else 0.0,
+            dropout_p=self._dropout_rate if self.training else 0,
         )
         attn_output = cast(torch.Tensor, attn_output)
         attn_output = attn_output.view(-1, self._d_model)
