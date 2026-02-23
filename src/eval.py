@@ -156,12 +156,12 @@ def main():
         run.define_metric("METEOR", step_metric="eval_step")
 
         for i in range(len(out_log)):
-            if (out_log.iloc[i]["BLEU Score"] is not None) and (not pd.isna(out_log.iloc[i]["BLEU Score"])):
-                run.log({"BLEU": out_log.iloc[i]["BLEU Score"], "eval_step": int(out_log.iloc[i]["step"])})
-                print(f"Logged BLEU score {out_log.iloc[i]['BLEU Score']} at step {out_log.iloc[i]['step']}.")
-            if (out_log.iloc[i]["METEOR Score"] is not None) and (not pd.isna(out_log.iloc[i]["METEOR Score"])):
-                run.log({"METEOR": out_log.iloc[i]["METEOR Score"], "eval_step": int(out_log.iloc[i]["step"])})
-                print(f"Logged METEOR score {out_log.iloc[i]['METEOR Score']} at step {out_log.iloc[i]['step']}.")
+            if (out_log.iloc[i]["BLEU"] is not None) and (not pd.isna(out_log.iloc[i]["BLEU"])):
+                run.log({"BLEU": out_log.iloc[i]["BLEU"], "eval_step": int(out_log.iloc[i]["step"])})
+                print(f"Logged BLEU score {out_log.iloc[i]['BLEU']} at step {out_log.iloc[i]['step']}.")
+            if (out_log.iloc[i]["METEOR"] is not None) and (not pd.isna(out_log.iloc[i]["METEOR"])):
+                run.log({"METEOR": out_log.iloc[i]["METEOR"], "eval_step": int(out_log.iloc[i]["step"])})
+                print(f"Logged METEOR score {out_log.iloc[i]['METEOR']} at step {out_log.iloc[i]['step']}.")
         wandb.finish()
 
 
