@@ -1,0 +1,5 @@
+[eval]
+exp_dir = "log/5971607" # experiment directory
+beam_size = 4
+length_penalty = 0.6
+tolerance = 50
