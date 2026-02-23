@@ -8,12 +8,13 @@ import time
 
 
 class DistributedTokenBatchSampler(Sampler[List[int]]):
-    def __init__(self, dataset: WMTDataset, seed: int, max_tokens: int, shuffle: bool = False):
+    def __init__(self, dataset: WMTDataset, seed: int, max_tokens: int, shuffle: bool = False, total_epochs: int = 20):
         self._dataset = dataset
         self._seed = seed
         self._max_tokens = max_tokens
         assert max_tokens > 0, "max_tokens must be a positive integer"
         self._shuffle = shuffle
+        self._total_epochs = total_epochs
 
         if dist.is_available() and dist.is_initialized():
             self._num_replicas = dist.get_world_size()
@@ -23,6 +24,12 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             self._rank = 0
 
         self._epoch = 0
+        self._cached_batches: dict[int, List[List[int]]] = {}
+        if self._shuffle:
+            for epoch in range(total_epochs):
+                self._cached_batches[epoch] = self._create_batches(seed=seed, epoch=epoch)
+        else:
+            self._cached_batches[0] = self._create_batches()
 
     def _create_batches(self, seed: int = 42, epoch: int = 0) -> List[List[int]]:
         start_time = time.time()
@@ -51,9 +58,9 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def __iter__(self) -> Iterator[List[int]]:
         if self._shuffle:
-            batches = self._create_batches(seed=self._seed, epoch=self._epoch)
+            batches = self._cached_batches[self._epoch] if self._epoch in self._cached_batches else self._create_batches(seed=self._seed, epoch=self._epoch)
         else:
-            batches = self._create_batches()
+            batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
 
         num_batches = len(batches)
         num_batches_per_replica = num_batches // self._num_replicas
@@ -63,9 +70,9 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def __len__(self) -> int:
         if self._shuffle:
-            batches = self._create_batches(seed=self._seed, epoch=self._epoch)
+            batches = self._cached_batches[self._epoch] if self._epoch in self._cached_batches else self._create_batches(seed=self._seed, epoch=self._epoch)
         else:
-            batches = self._create_batches()
+            batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
         num_batches = len(batches)
         return num_batches // self._num_replicas
 

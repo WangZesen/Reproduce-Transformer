@@ -7,6 +7,7 @@ from typing import Literal, Optional, Tuple, Union
 from pydantic import BaseModel, Field, computed_field, ConfigDict
 from loguru import logger
 from functools import cached_property
+import tomli_w
 
 PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), ".."), ".")
 
@@ -98,6 +99,9 @@ class Log(_BaseModel):
     wandb_on: bool = Field(default=True)
     wandb_project: str = Field(default="reproduce-transformer")
     checkpoint_freq: int = Field(default=1)
+    with_states: bool = Field(
+        default=False, description="Whether to save optimizer and lr scheduler states in checkpoints."
+    )
 
     @computed_field
     @cached_property
@@ -127,7 +131,6 @@ class Train(_BaseModel):
     label_smoothing: float = Field(default=0.1)
     checkpoint_dir: Optional[str] = None
     max_epochs: int = Field(default=20)
-    use_amp: bool = Field(default=False)
     seed: int = Field(default=42)
     network: Network = Field(default_factory=Network)
     model: Model = Field(default_factory=Model)
@@ -231,3 +234,9 @@ def parse_eval_config() -> Config:
         raw_cfg = _merge(raw_cfg, cfg)
 
     return Config.model_validate(raw_cfg)
+
+
+def dump_config(cfg: Config, output_dir: str) -> None:
+    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+    with open(output_dir, "wb") as f:
+        tomli_w.dump(cfg.model_dump(), f)

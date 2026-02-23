@@ -7,14 +7,23 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.profiler import schedule, profile, ProfilerActivity
-from src.conf import parse_config, Config
+from src.conf import parse_config, Config, dump_config
 from src.data.dataloader import get_dataloaders, DataLoader
 from src.data.dataset import get_datasets
 from src.model import TransformerModule
-from src.utils import get_optim, get_lr_scheduler, initialize, SmoothedValue, gather_statistics
+from src.utils import (
+    get_optim,
+    get_lr_scheduler,
+    initialize,
+    SmoothedValue,
+    gather_statistics,
+    get_group_name,
+    get_run_name,
+)
+import wandb
+import pandas as pd
 from loguru import logger
 from typing import Tuple
-import pandas as pd
 
 
 def load_checkpoint(
@@ -82,6 +91,15 @@ def train_epoch(
                 f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}",
                 f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB",
             )
+            if cfg.train.log.wandb_on:
+                wandb.log(
+                    {
+                        "train_loss": loss_metric.avg,
+                        "learning_rate": lr,
+                        "tokens_per_batch": tpb_metric.avg,
+                    },
+                    step=step,
+                )
         profiler.step()
 
     torch.cuda.synchronize()
@@ -143,8 +161,18 @@ def main():
     )
     model = model.cuda()
     if cfg.train.network.rank == 0:
+        if cfg.train.log.wandb_on:
+            wandb.init(
+                project=cfg.train.log.wandb_project,
+                name=get_run_name(cfg),
+                group=get_group_name(cfg),
+                config=cfg.model_dump(),
+                save_code=True,
+                dir=os.environ.get("TMPDIR", "/tmp"),
+            )
         logger.info(cfg.model_dump_json(indent=4))
         logger.info(f"Trainable parameters: {sum(p.numel() for p in model.parameters())}")
+        dump_config(cfg, os.path.join(cfg.train.log.log_dir, "config.toml"))
 
     optimizer = get_optim(cfg, model)
     lr_scheduler = get_lr_scheduler(cfg, optimizer)
@@ -154,7 +182,6 @@ def main():
         model = DDP(model, broadcast_buffers=False, gradient_as_bucket_view=True)
 
     # Training loop
-
     global_step = 0
     start_epoch = 0
     total_train_time = 0.0
@@ -210,23 +237,36 @@ def main():
                 )
                 checkpoint_dir = ""
                 if ((epoch + 1) % cfg.train.log.checkpoint_freq == 0) or (epoch == cfg.train.max_epochs - 1):
-                    checkpoint_dir = os.path.join(
-                        cfg.train.log.log_dir, "checkpoint", f"epoch_{epoch + 1}.pt"
-                    )
+                    checkpoint_dir = os.path.join(cfg.train.log.log_dir, "checkpoint", f"epoch_{epoch + 1}.pt")
                     os.makedirs(os.path.dirname(checkpoint_dir), exist_ok=True)
-                    torch.save(
-                        {
-                            "model_state_dict": model.module.state_dict() if isinstance(model, DDP) else model.state_dict(),
-                            "optim_state_dict": optimizer.state_dict(),
-                            "scheduler_state_dict": lr_scheduler.state_dict(),
-                            "global_step": global_step,
-                            "epoch": epoch + 1,
-                            "total_train_time": total_train_time,
-                        },
-                        checkpoint_dir,
-                    )
+                    if cfg.train.log.with_states or (epoch == cfg.train.max_epochs - 1):
+                        torch.save(
+                            {
+                                "model_state_dict": model.module.state_dict()
+                                if isinstance(model, DDP)
+                                else model.state_dict(),
+                                "optim_state_dict": optimizer.state_dict(),
+                                "scheduler_state_dict": lr_scheduler.state_dict(),
+                                "global_step": global_step,
+                                "epoch": epoch + 1,
+                                "total_train_time": total_train_time,
+                            },
+                            checkpoint_dir,
+                        )
+                    else:
+                        torch.save(
+                            {
+                                "model_state_dict": model.module.state_dict()
+                                if isinstance(model, DDP)
+                                else model.state_dict(),
+                                "global_step": global_step,
+                                "epoch": epoch + 1,
+                                "total_train_time": total_train_time,
+                            },
+                            checkpoint_dir,
+                        )
                     logger.info(f"Saved checkpoint to {checkpoint_dir}")
-                
+
                 train_log.loc[epoch - start_epoch] = [
                     epoch + 1,
                     global_step,
@@ -237,8 +277,21 @@ def main():
                 ]
                 train_log.to_csv(os.path.join(cfg.train.log.log_dir, "train_log.csv"), index=False)
 
+                if cfg.train.log.wandb_on:
+                    wandb.log(
+                        {
+                            "epoch_train_loss": train_loss,
+                            "val_loss": val_loss,
+                            "epoch_time": train_time,
+                            "total_train_time": total_train_time,
+                            "epoch": epoch + 1,
+                        },
+                        step=global_step,
+                    )
+
             if dist.is_initialized():
                 dist.barrier()
+
 
 if __name__ == "__main__":
     main()
