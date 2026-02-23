@@ -80,7 +80,7 @@ def train_epoch(
 
         # update metrics
         loss_metric.update(loss.item())
-        tpb_metric.update((batch[2][-1] + batch[3][-1]) * cfg.train.network.world_size)
+        tpb_metric.update((batch[2][-1].item() + batch[3][-1].item()) * cfg.train.network.world_size)
         lr = lr_scheduler.get_last_lr()[0]
         step += 1
 
