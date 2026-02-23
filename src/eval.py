@@ -1,4 +1,5 @@
 import os
+import wandb
 import pandas as pd
 from tokenizers import Tokenizer
 import torch
@@ -126,13 +127,42 @@ def main():
                     references.append(tokenizer.decode(tgt[start_idx:end_idx]))
                     predictions.append(tokenizer.decode(preds[j]))
 
-        bleu_score = bleu.compute(predictions=predictions, references=references)['bleu']  # type: ignore
-        meteor_score = meteor.compute(predictions=predictions, references=references)['meteor']  # type: ignore
-        logger.info(f"[Epoch {train_log.iloc[i]['epoch']}] BLEU Score: {bleu_score:.4f}, METEOR Score: {meteor_score:.4f}")
+        bleu_score = bleu.compute(predictions=predictions, references=references)["bleu"]  # type: ignore
+        meteor_score = meteor.compute(predictions=predictions, references=references)["meteor"]  # type: ignore
+        logger.info(
+            f"[Epoch {train_log.iloc[i]['epoch']}] BLEU Score: {bleu_score:.4f}, METEOR Score: {meteor_score:.4f}"
+        )
         out_log.loc[cnt] = train_log.iloc[i].values.tolist() + [bleu_score, meteor_score]
         cnt += 1
     out_log.to_csv(test_log_dir, index=False)
     logger.info(f"Saved evaluation log to {test_log_dir}")
+
+    if cfg.train.log.wandb_on:
+        wandb_id = None
+        with open(os.path.join(cfg.eval.exp_dir, "err.out"), "r") as f:
+            line = f.readline()
+            while line:
+                if "View run at " in line:
+                    wandb_id = line.split("View run at ")[-1].split("/")[-1].strip(" \n")
+                    break
+                line = f.readline()
+        assert wandb_id is not None, "WandB ID not found in the error log."
+
+        run = wandb.init(
+            project=cfg.train.log.wandb_project, id=wandb_id, resume="must", dir=os.environ.get("TMPDIR", "/tmp")
+        )
+
+        run.define_metric("BLEU", step_metric="eval_step")
+        run.define_metric("METEOR", step_metric="eval_step")
+
+        for i in range(len(out_log)):
+            if (out_log.iloc[i]["BLEU Score"] is not None) and (not pd.isna(out_log.iloc[i]["BLEU Score"])):
+                run.log({"BLEU": out_log.iloc[i]["BLEU Score"], "eval_step": int(out_log.iloc[i]["step"])})
+                print(f"Logged BLEU score {out_log.iloc[i]['BLEU Score']} at step {out_log.iloc[i]['step']}.")
+            if (out_log.iloc[i]["METEOR Score"] is not None) and (not pd.isna(out_log.iloc[i]["METEOR Score"])):
+                run.log({"METEOR": out_log.iloc[i]["METEOR Score"], "eval_step": int(out_log.iloc[i]["step"])})
+                print(f"Logged METEOR score {out_log.iloc[i]['METEOR Score']} at step {out_log.iloc[i]['step']}.")
+        wandb.finish()
 
 
 if __name__ == "__main__":
