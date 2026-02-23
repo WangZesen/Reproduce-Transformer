@@ -43,7 +43,7 @@ uv run -m src.preprocess --cfg-list configs/data/wmt14_en_fr.toml
 The experiments are conducted on a cluster using Slurm as the scheduler. To run the training with four A40 GPUs, 
 
 ```
-sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh config/data/<DATA_CFG> config/model/<MODEL_CFG>
+sbatch -A <PROJECT_ACCOUNT> scripts/train/4xA40.sh configs/data/<DATA_CFG> configs/model/<MODEL_CFG>
 ```
 where `<PROJECT_ACCOUNT>` is the slurm project account, and `<DATA_CFG>` could be (1) `wmt14_en_de.toml` for WMT14 English-German dataset (2) `wmt14_en_fr.toml` for WMT14 English-French dataset, and `<MODEL_CFG>` could be (1) `base.toml` for transformer-base (~63M parameters) and (2) `big.toml` for transformer-big (~213M parameters).
 
