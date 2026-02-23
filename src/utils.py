@@ -143,15 +143,9 @@ def get_group_name(cfg: Config) -> str:
     if cfg.train.backend.name == "decent_dp":
         if cfg.train.optim.name == "adam":
             name += f"d-{cfg.train.optim.name.lower()}"
-        elif cfg.train.optim.name == "accumadam":
-            name += f"d-{cfg.train.optim.name.lower()}@{cfg.train.optim.accum_iters}"
         else:
             raise ValueError(f"Unsupported optimizer for decent_dp: {cfg.train.optim.name}")
-        if cfg.train.backend.adaptive_consensus_omega > 0:
-            if cfg.train.backend.omega != 1.0:
-                name += f" - ac {cfg.train.backend.adaptive_consensus_omega}@{cfg.train.backend.ac_start_step}@{cfg.train.backend.adaptive_consensus_p}@o{cfg.train.backend.omega:.2f} - {cfg.train.backend.topology}"
-            else:
-                name += f" - ac {cfg.train.backend.adaptive_consensus_omega}@{cfg.train.backend.ac_start_step}@{cfg.train.backend.adaptive_consensus_p} - {cfg.train.backend.topology}"
+        name += f" - {cfg.train.backend.topology}"
     else:
         name += f"{cfg.train.optim.name.lower()}"
 

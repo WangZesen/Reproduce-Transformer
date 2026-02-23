@@ -56,7 +56,7 @@ def main():
     token_eos_id = tokenizer.token_to_id(SPECIAL_TOKENS.EOS)
 
     test_dataset = get_dataset(cfg, tokenizer_dir, split="test")
-    test_ds = get_dataloader(cfg, test_dataset)
+    test_ds = get_dataloader(cfg, test_dataset, drop_last=False)
 
     model = TransformerModule(
         cfg.data.tokenizer.vocab_size,
