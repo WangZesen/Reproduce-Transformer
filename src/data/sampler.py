@@ -8,13 +8,22 @@ import time
 
 
 class DistributedTokenBatchSampler(Sampler[List[int]]):
-    def __init__(self, dataset: WMTDataset, seed: int, max_tokens: int, shuffle: bool = False, total_epochs: int = 20):
+    def __init__(
+        self,
+        dataset: WMTDataset,
+        seed: int,
+        max_tokens: int,
+        shuffle: bool = False,
+        total_epochs: int = 20,
+        drop_last: bool = False,
+    ):
         self._dataset = dataset
         self._seed = seed
         self._max_tokens = max_tokens
         assert max_tokens > 0, "max_tokens must be a positive integer"
         self._shuffle = shuffle
         self._total_epochs = total_epochs
+        self._drop_last = drop_last
 
         if dist.is_available() and dist.is_initialized():
             self._num_replicas = dist.get_world_size()
@@ -49,7 +58,8 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             batch.append(data[i][2])
 
             if (src_num_tokens + tgt_num_tokens > self._max_tokens * 2) or (i == len(data) - 1):
-                batches.append(batch)
+                if not self._drop_last or (src_num_tokens + tgt_num_tokens <= self._max_tokens * 2):
+                    batches.append(batch)
                 batch = []
                 src_num_tokens = 0
                 tgt_num_tokens = 0
@@ -58,7 +68,11 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def __iter__(self) -> Iterator[List[int]]:
         if self._shuffle:
-            batches = self._cached_batches[self._epoch] if self._epoch in self._cached_batches else self._create_batches(seed=self._seed, epoch=self._epoch)
+            batches = (
+                self._cached_batches[self._epoch]
+                if self._epoch in self._cached_batches
+                else self._create_batches(seed=self._seed, epoch=self._epoch)
+            )
         else:
             batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
 
@@ -70,7 +84,11 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def __len__(self) -> int:
         if self._shuffle:
-            batches = self._cached_batches[self._epoch] if self._epoch in self._cached_batches else self._create_batches(seed=self._seed, epoch=self._epoch)
+            batches = (
+                self._cached_batches[self._epoch]
+                if self._epoch in self._cached_batches
+                else self._create_batches(seed=self._seed, epoch=self._epoch)
+            )
         else:
             batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
         num_batches = len(batches)

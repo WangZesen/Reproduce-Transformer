@@ -33,6 +33,7 @@ def get_dataloaders(
         max_tokens=cfg.train.max_tokens_per_local_batch,
         shuffle=train_shuffle,
         total_epochs=cfg.train.max_epochs,
+        drop_last=True,
     )
     val_sampler = DistributedTokenBatchSampler(
         dataset=val_dataset,
@@ -40,6 +41,7 @@ def get_dataloaders(
         max_tokens=cfg.train.max_tokens_per_local_batch,
         shuffle=False,
         total_epochs=cfg.train.max_epochs,
+        drop_last=True,
     )
     train_loader = DataLoader(
         train_dataset,
@@ -54,7 +56,7 @@ def get_dataloaders(
     return train_loader, val_loader
 
 
-def get_dataloader(cfg: Config, dataset: WMTDataset, shuffle: bool = False) -> DataLoader:
+def get_dataloader(cfg: Config, dataset: WMTDataset, shuffle: bool = False, drop_last: bool = False) -> DataLoader:
     assert cfg.train is not None
 
     sampler = DistributedTokenBatchSampler(
@@ -63,6 +65,7 @@ def get_dataloader(cfg: Config, dataset: WMTDataset, shuffle: bool = False) -> D
         max_tokens=cfg.train.max_tokens_per_local_batch,
         shuffle=shuffle,
         total_epochs=cfg.train.max_epochs,
+        drop_last=drop_last,
     )
     loader = DataLoader(dataset, batch_sampler=sampler, collate_fn=unbatched_collate_fn, pin_memory=True)
     return loader

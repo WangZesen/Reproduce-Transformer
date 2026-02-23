@@ -139,6 +139,7 @@ def val_epoch(
 def main():
     cfg = parse_config()
     assert cfg.train is not None, "Training configuration must be provided"
+    assert cfg.train.backend.name == "pytorch_ddp", "PyTorch DDP backend must be used for this script"
 
     # Set up distributed training and random seeds
     initialize()
