@@ -27,8 +27,7 @@ class FlashAttention(nn.Module):
         self._dropout_rate = dropout
 
         self._q_proj = nn.Linear(d_model, d_model, bias=True)
-        self._k_proj = nn.Linear(d_model, d_model, bias=True)
-        self._v_proj = nn.Linear(d_model, d_model, bias=True)
+        self._kv_proj = nn.Linear(d_model, d_model * 2, bias=True)
         self._out_proj = nn.Linear(d_model, d_model, bias=True)
 
     def forward(
@@ -46,11 +45,11 @@ class FlashAttention(nn.Module):
         q = self._q_proj(hidden_states).view(-1, self._num_heads, self._d_head)
 
         if self._is_cross_attention and encoder_hidden_states is not None:
-            k = self._k_proj(encoder_hidden_states).view(-1, self._num_heads, self._d_head)
-            v = self._v_proj(encoder_hidden_states).view(-1, self._num_heads, self._d_head)
+            kv = self._kv_proj(encoder_hidden_states).view(-1, 2, self._num_heads, self._d_head)
+            k, v = kv.unbind(dim=1)
         else:
-            k = self._k_proj(hidden_states).view(-1, self._num_heads, self._d_head)
-            v = self._v_proj(hidden_states).view(-1, self._num_heads, self._d_head)
+            kv = self._kv_proj(hidden_states).view(-1, 2, self._num_heads, self._d_head)
+            k, v = kv.unbind(dim=1)
 
         if past_key_value is not None:
             k_cache, v_cache = past_key_value
