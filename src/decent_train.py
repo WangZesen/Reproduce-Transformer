@@ -406,7 +406,7 @@ def main():
 
     with profile(
         activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        schedule=schedule(wait=64, warmup=2, active=8, repeat=1),
+        schedule=schedule(wait=128, warmup=2, active=8, repeat=1),
         on_trace_ready=torch.profiler.tensorboard_trace_handler(
             os.path.join(cfg.train.log.log_dir, "tb_trace"), worker_name=f"worker_{cfg.train.network.rank:02d}"
         ),
