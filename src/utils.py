@@ -145,7 +145,7 @@ def get_group_name(cfg: Config) -> str:
             name += f"d-{cfg.train.optim.name.lower()}"
         else:
             raise ValueError(f"Unsupported optimizer for decent_dp: {cfg.train.optim.name}")
-        name += f" - {cfg.train.backend.topology}"
+        name += f" - {cfg.train.backend.topology.value}"
     else:
         name += f"{cfg.train.optim.name.lower()}"
 

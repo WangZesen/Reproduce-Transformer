@@ -22,8 +22,8 @@ class SPECIAL_TOKENS:
 
 
 class Topology(str, Enum):
-    ONE_PEER_RING = "1p-ring"
-    ONE_PEER_EXP = "1p-exp"
+    ONE_PEER_RING = "ring"
+    ONE_PEER_EXP = "exp"
     COMPLETE = "complete"
 
 
