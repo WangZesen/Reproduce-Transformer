@@ -3,11 +3,12 @@ import torch.distributed as dist
 from torch.utils.data import Sampler
 from typing import Iterator, List
 from src.data.dataset import WMTDataset
-from loguru import logger
-import time
+from typing import Optional
 
 
 class DistributedTokenBatchSampler(Sampler[List[int]]):
+    CAP = 400
+
     def __init__(
         self,
         dataset: WMTDataset,
@@ -31,17 +32,25 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
         else:
             self._num_replicas = 1
             self._rank = 0
+        self._max_tokens_per_replica = self._max_tokens // self._num_replicas
 
         self._epoch = 0
         self._cached_batches: dict[int, List[List[int]]] = {}
+        self._target_num_batches = ((self._dataset.get_total_tokens() // self._max_tokens - self.CAP // 2) // self.CAP) * self.CAP * self._num_replicas
+
         if self._shuffle:
             for epoch in range(total_epochs):
-                self._cached_batches[epoch] = self._create_batches(seed=seed, epoch=epoch)
+                self._cached_batches[epoch] = self._create_batches(
+                    seed=seed,
+                    epoch=epoch,
+                    target_num_batches=self._target_num_batches,
+                )
         else:
             self._cached_batches[0] = self._create_batches()
 
-    def _create_batches(self, seed: int = 42, epoch: int = 0) -> List[List[int]]:
-        start_time = time.time()
+    def _create_batches(
+        self, seed: int = 42, epoch: int = 0, target_num_batches: Optional[int] = None
+    ) -> List[List[int]]:
         src_token_stats, tgt_token_stats = self._dataset.get_token_stats()
         data = list(zip(src_token_stats, tgt_token_stats, list(range(len(src_token_stats)))))
         random.seed(seed + epoch * 1007)
@@ -57,13 +66,17 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             tgt_num_tokens += data[i][1]
             batch.append(data[i][2])
 
-            if (src_num_tokens + tgt_num_tokens > self._max_tokens * 2) or (i == len(data) - 1):
-                if not self._drop_last or (src_num_tokens + tgt_num_tokens > self._max_tokens * 2):
+            if (src_num_tokens + tgt_num_tokens > self._max_tokens_per_replica * 2) or (i == len(data) - 1):
+                if not self._drop_last or (src_num_tokens + tgt_num_tokens > self._max_tokens_per_replica * 2):
                     batches.append(batch)
                 batch = []
                 src_num_tokens = 0
                 tgt_num_tokens = 0
-        logger.trace(f"Created {len(batches)} batches in {time.time() - start_time:.5f} seconds")
+        if target_num_batches is not None and len(batches) > target_num_batches:
+            batches = batches[:target_num_batches]
+        elif target_num_batches is not None and len(batches) < target_num_batches:
+            batches.extend(batches[: target_num_batches - len(batches)])
+
         return batches
 
     def __iter__(self) -> Iterator[List[int]]:
@@ -71,7 +84,9 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             batches = (
                 self._cached_batches[self._epoch]
                 if self._epoch in self._cached_batches
-                else self._create_batches(seed=self._seed, epoch=self._epoch)
+                else self._create_batches(
+                    seed=self._seed, epoch=self._epoch, target_num_batches=self._target_num_batches
+                )
             )
         else:
             batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
@@ -84,14 +99,10 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
     def __len__(self) -> int:
         if self._shuffle:
-            batches = (
-                self._cached_batches[self._epoch]
-                if self._epoch in self._cached_batches
-                else self._create_batches(seed=self._seed, epoch=self._epoch)
-            )
+            num_batches = self._target_num_batches
         else:
             batches = self._cached_batches[0] if 0 in self._cached_batches else self._create_batches()
-        num_batches = len(batches)
+            num_batches = len(batches)
         return num_batches // self._num_replicas
 
     def set_epoch(self, epoch: int) -> None:

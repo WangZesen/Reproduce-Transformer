@@ -56,7 +56,7 @@ def get_dataloaders(
     train_sampler = DistributedTokenBatchSampler(
         dataset=train_dataset,
         seed=cfg.train.seed,
-        max_tokens=cfg.train.max_tokens_per_local_batch,
+        max_tokens=cfg.train.max_tokens_per_batch,
         shuffle=train_shuffle,
         total_epochs=cfg.train.max_epochs,
         drop_last=True,
@@ -64,7 +64,7 @@ def get_dataloaders(
     val_sampler = DistributedTokenBatchSampler(
         dataset=val_dataset,
         seed=cfg.train.seed,
-        max_tokens=cfg.train.max_tokens_per_local_batch,
+        max_tokens=cfg.train.max_tokens_per_batch,
         shuffle=False,
         total_epochs=cfg.train.max_epochs,
         drop_last=True,
@@ -88,7 +88,7 @@ def get_dataloader(cfg: Config, dataset: WMTDataset, shuffle: bool = False, drop
     sampler = DistributedTokenBatchSampler(
         dataset=dataset,
         seed=cfg.train.seed,
-        max_tokens=cfg.train.max_tokens_per_local_batch,
+        max_tokens=cfg.train.max_tokens_per_batch,
         shuffle=shuffle,
         total_epochs=cfg.train.max_epochs,
         drop_last=drop_last,

@@ -24,8 +24,8 @@ class WMTDataset(Dataset):
         tgt_file = os.path.join(tokenizer_dir, f"{split}.{cfg.data.tgt_lang}")
 
         start_time = time.time()
-        self._src_start_pos, self._src_len, self._src_raw = self.load_from_bin(src_file)
-        self._tgt_start_pos, self._tgt_len, self._tgt_raw = self.load_from_bin(tgt_file)
+        self._src_start_pos, self._src_len, self._src_raw = self.load_from_binary(src_file)
+        self._tgt_start_pos, self._tgt_len, self._tgt_raw = self.load_from_binary(tgt_file)
 
         total_src_tokens = sum(self._src_len)
         total_tgt_tokens = sum(self._tgt_len)
@@ -40,7 +40,7 @@ class WMTDataset(Dataset):
             logger.info(f"Memory usage: {memory_info.rss / 1024 / 1024 / 1024:.2f} GB")
             logger.info(f"Time elapsed for loading the data: {elapsed_time:.2f} seconds")
 
-    def load_from_bin(self, data_dir: str):
+    def load_from_binary(self, data_dir: str):
         with open(data_dir, "rb") as f:
             data = f.read()
 
@@ -78,6 +78,9 @@ class WMTDataset(Dataset):
 
     def get_token_stats(self) -> Tuple[List[int], List[int]]:
         return self._src_len, self._tgt_len
+
+    def get_total_tokens(self) -> int:
+        return sum(self._src_len) + sum(self._tgt_len)
 
 
 def get_datasets(cfg: "Config", tokenizer_dir: str) -> Tuple[WMTDataset, WMTDataset]:
