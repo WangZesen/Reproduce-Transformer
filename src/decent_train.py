@@ -248,6 +248,8 @@ def train_epoch(
     torch.cuda.synchronize()
 
     start_time = time.time()
+    last_log_time = start_time
+    last_log_idx = 0
     model.train()
     total_step = len(train_ds)
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
@@ -283,12 +285,15 @@ def train_epoch(
         step += 1
 
         if (cfg.train.network.rank == 0) and (step % cfg.train.log.log_freq == 0):
-            elapsed_time = time.time() - start_time
+            current_log_time = time.time()
+            elapsed_time = current_log_time - last_log_time
             logger.info(
-                f"step: {step} ({elapsed_time / (batch_idx + 1):.3f} s/it), "
+                f"step: {step} ({elapsed_time / (batch_idx - last_log_idx + 1):.3f} s/it), "
                 f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}",
                 f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB",
             )
+            last_log_time = current_log_time
+            last_log_idx = batch_idx
             if cfg.train.log.wandb_on:
                 wandb.log(
                     {
@@ -361,6 +366,7 @@ def main():
         cfg.train.model.dropout,
     )
     model = model.cuda()
+    model.forward = torch.compile(model.forward, dynamic=True)
     if cfg.train.network.rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(
