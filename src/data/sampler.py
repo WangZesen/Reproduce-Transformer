@@ -4,10 +4,11 @@ from torch.utils.data import Sampler
 from typing import Iterator, List
 from src.data.dataset import WMTDataset
 from typing import Optional
+from loguru import logger
 
 
 class DistributedTokenBatchSampler(Sampler[List[int]]):
-    CAP = 400
+    CAP = 100
 
     def __init__(
         self,
@@ -36,7 +37,13 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
 
         self._epoch = 0
         self._cached_batches: dict[int, List[List[int]]] = {}
-        self._target_num_batches = ((self._dataset.get_total_tokens() // self._max_tokens - self.CAP // 2) // self.CAP) * self.CAP * self._num_replicas
+
+        # Calculate the target number of batches to ensure a same number of batches in every epochs
+        self._target_num_batches = (
+            ((self._dataset.get_total_tokens() // (2 * self._max_tokens) - self.CAP // 5) // self.CAP)
+            * self.CAP
+            * self._num_replicas
+        )
 
         if self._shuffle:
             for epoch in range(total_epochs):
@@ -75,6 +82,9 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
         if target_num_batches is not None and len(batches) > target_num_batches:
             batches = batches[:target_num_batches]
         elif target_num_batches is not None and len(batches) < target_num_batches:
+            logger.warning(
+                f"Number of batches ({len(batches)}) is less than target_num_batches ({target_num_batches}). Some batches will be duplicated."
+            )
             batches.extend(batches[: target_num_batches - len(batches)])
 
         return batches
