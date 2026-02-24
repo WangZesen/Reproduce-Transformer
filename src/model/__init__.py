@@ -21,16 +21,6 @@ class PositionalEncoding(nn.Module):
         return self.pe[positions]  # type: ignore
 
 
-def generate_position_ids_from_cu_seqlens(cu_seqlens) -> torch.Tensor:
-    seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
-    start_idx = cu_seqlens[:-1]
-    block_starts = torch.repeat_interleave(start_idx, seqlens)
-    total_len = cu_seqlens[-1]
-    global_position_ids = torch.arange(total_len, device=cu_seqlens.device)
-    position_ids = global_position_ids - block_starts
-    return position_ids
-
-
 class TransformerModule(nn.Module):
     def __init__(
         self,
@@ -65,13 +55,10 @@ class TransformerModule(nn.Module):
         initrange = 0.1
         self._token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    def encode(self, src: torch.Tensor, cu_src_lens: torch.Tensor, max_src_len: int) -> torch.Tensor:
-        # generate position ids for source and target sequences
-        src_position_ids = generate_position_ids_from_cu_seqlens(cu_src_lens)
-
+    def encode(self, src: torch.Tensor, src_pos_ids: torch.Tensor, cu_src_lens: torch.Tensor, max_src_len: int) -> torch.Tensor:
         # get the token embeddings and add positional encodings
         src_emb = self._token_embedding(src) * math.sqrt(self._d_model)
-        src_emb = src_emb + self._positional_encoding(src_position_ids)
+        src_emb = src_emb + self._positional_encoding(src_pos_ids)
         src_emb = self._enc_dropout(src_emb)
 
         # run through the encoder layers
@@ -83,7 +70,7 @@ class TransformerModule(nn.Module):
         self,
         memory: torch.Tensor,
         tgt: torch.Tensor,
-        tgt_position_ids: torch.Tensor,
+        tgt_pos_ids: torch.Tensor,
         cu_src_lens: torch.Tensor,
         cu_tgt_lens: torch.Tensor,
         max_src_len: int,
@@ -95,7 +82,7 @@ class TransformerModule(nn.Module):
     ):
         # get the token embeddings and add positional encodings
         tgt_emb = self._token_embedding(tgt) * math.sqrt(self._d_model)
-        tgt_emb = tgt_emb + self._positional_encoding(tgt_position_ids)
+        tgt_emb = tgt_emb + self._positional_encoding(tgt_pos_ids)
         tgt_emb = self._dec_dropout(tgt_emb)
 
         next_decoder_cache = () if use_cache else None
@@ -124,17 +111,16 @@ class TransformerModule(nn.Module):
         self,
         src: torch.Tensor,
         tgt: torch.Tensor,
+        src_pos_ids: torch.Tensor,
+        tgt_pos_ids: torch.Tensor,
         cu_src_lens: torch.Tensor,
         cu_tgt_lens: torch.Tensor,
         max_src_len: int,
         max_tgt_len: int,
     ) -> torch.Tensor:
-        # generate position ids for target sequences
-        tgt_position_ids = generate_position_ids_from_cu_seqlens(cu_tgt_lens)
-
         # run through the encoder and decoder
-        memory = self.encode(src, cu_src_lens, max_src_len)
-        logits, _ = self.decode(memory, tgt, tgt_position_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
+        memory = self.encode(src, src_pos_ids, cu_src_lens, max_src_len)
+        logits, _ = self.decode(memory, tgt, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
         return logits
 
 
@@ -142,6 +128,7 @@ class TransformerModule(nn.Module):
 def beam_search(
     model: TransformerModule,
     src: torch.Tensor,
+    src_pos_ids: torch.Tensor,
     cu_src_lens: torch.Tensor,
     max_src_len: int,
     beam_size: int,
@@ -157,7 +144,7 @@ def beam_search(
     src_lens = torch.tensor(cu_src_lens_cpu[1:] - cu_src_lens_cpu[:-1], device=device).view(-1, 1)
 
     # encode the source sequence
-    memory = model.encode(src, cu_src_lens, max_src_len)
+    memory = model.encode(src, src_pos_ids, cu_src_lens, max_src_len)
     batch_size = cu_src_lens.size(0) - 1
 
     # prepare for beam search decoding
@@ -258,7 +245,6 @@ def reorder_kv_cache_batched(past_key_values, beam_indices, batch_size):
     reordered_cache = ()
     beam_size = beam_indices.size(1)
     
-    # 同样创建 batch_idx
     batch_idx = torch.arange(batch_size, device=beam_indices.device).unsqueeze(1)
 
     for layer_cache in past_key_values:
@@ -271,18 +257,14 @@ def reorder_kv_cache_batched(past_key_values, beam_indices, batch_size):
             num_heads = k.size(1)
             head_dim = k.size(2)
 
-            # k 的总长度此时为 batch_size * beam_size * current_seqlen
             current_seqlen = k.size(0) // (batch_size * beam_size)
             
-            # 1. Reshape 为 5D 张量: (batch_size, beam_size, seqlen, heads, head_dim)
             k = k.view(batch_size, beam_size, current_seqlen, num_heads, head_dim)
             v = v.view(batch_size, beam_size, current_seqlen, num_heads, head_dim)
 
-            # 2. 在 Beam 维度上根据 beam_indices 重新提取
             k_reordered = k[batch_idx, beam_indices]
             v_reordered = v[batch_idx, beam_indices]
 
-            # 3. 再次拍平回 1D sequence (交还给 Varlen Flash Attention)
             k_reordered = k_reordered.view(-1, num_heads, head_dim)
             v_reordered = v_reordered.view(-1, num_heads, head_dim)
 

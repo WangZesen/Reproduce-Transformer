@@ -53,6 +53,8 @@ def train_epoch(
     torch.cuda.synchronize()
 
     start_time = time.time()
+    last_log_time = start_time
+    last_log_idx = 0
     model.train()
     total_step = len(train_ds)
     loss_metric = SmoothedValue(cfg.train.log.log_freq)
@@ -62,16 +64,18 @@ def train_epoch(
         logger.info(f"[Train Epoch {epoch + 1}] {total_step} steps")
 
     for batch_idx, batch in enumerate(train_ds):
-        src = batch[0].to("cuda", non_blocking=True)
-        tgt = batch[1].to("cuda", non_blocking=True)
-        cu_src_lens = batch[2].to("cuda", non_blocking=True)
-        cu_tgt_lens = batch[3].to("cuda", non_blocking=True)
-        max_src_len = batch[4]
-        max_tgt_len = batch[5]
-        labels = batch[6].to("cuda", non_blocking=True)
+        src = batch["src"].cuda(non_blocking=True)
+        tgt = batch["tgt"].cuda(non_blocking=True)
+        src_pos_ids = batch["src_pos_ids"].cuda(non_blocking=True)
+        tgt_pos_ids = batch["tgt_pos_ids"].cuda(non_blocking=True)
+        cu_src_lens = batch["cu_src_lens"].cuda(non_blocking=True)
+        cu_tgt_lens = batch["cu_tgt_lens"].cuda(non_blocking=True)
+        max_src_len = batch["max_src_len"]
+        max_tgt_len = batch["max_tgt_len"]
+        labels = batch["label"].cuda(non_blocking=True)
         optimizer.zero_grad()
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            logits = model(src, tgt, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
+            logits = model(src, tgt, src_pos_ids, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
             loss = criterion(logits, labels)
 
         loss.backward()
@@ -80,17 +84,20 @@ def train_epoch(
 
         # update metrics
         loss_metric.update(loss.item())
-        tpb_metric.update((batch[2][-1].item() + batch[3][-1].item()) * cfg.train.network.world_size)
+        tpb_metric.update((src.size(0) + tgt.size(0) + batch["batch_size"]) * cfg.train.network.world_size)
         lr = lr_scheduler.get_last_lr()[0]
         step += 1
 
         if (cfg.train.network.rank == 0) and (step % cfg.train.log.log_freq == 0):
-            elapsed_time = time.time() - start_time
+            current_log_time = time.time()
+            elapsed_time = current_log_time - last_log_time
             logger.info(
-                f"step: {step} ({elapsed_time / (batch_idx + 1):.3f} s/it), "
+                f"step: {step} ({elapsed_time / (batch_idx - last_log_idx + 1):.3f} s/it), "
                 f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}",
                 f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB",
             )
+            last_log_time = current_log_time
+            last_log_idx = batch_idx
             if cfg.train.log.wandb_on:
                 wandb.log(
                     {
@@ -120,16 +127,18 @@ def val_epoch(
         logger.info(f"[Valid Epoch {epoch + 1}] {len(val_ds)} steps")
 
     for batch in val_ds:
-        src = batch[0].to("cuda", non_blocking=True)
-        tgt = batch[1].to("cuda", non_blocking=True)
-        cu_src_lens = batch[2].to("cuda", non_blocking=True)
-        cu_tgt_lens = batch[3].to("cuda", non_blocking=True)
-        max_src_len = batch[4]
-        max_tgt_len = batch[5]
-        labels = batch[6].to("cuda", non_blocking=True)
+        src = batch["src"].cuda(non_blocking=True)
+        tgt = batch["tgt"].cuda(non_blocking=True)
+        src_pos_ids = batch["src_pos_ids"].cuda(non_blocking=True)
+        tgt_pos_ids = batch["tgt_pos_ids"].cuda(non_blocking=True)
+        cu_src_lens = batch["cu_src_lens"].cuda(non_blocking=True)
+        cu_tgt_lens = batch["cu_tgt_lens"].cuda(non_blocking=True)
+        max_src_len = batch["max_src_len"]
+        max_tgt_len = batch["max_tgt_len"]
+        labels = batch["label"].cuda(non_blocking=True)
 
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            logits = model(src, tgt, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
+            logits = model(src, tgt, src_pos_ids, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
             loss = criterion(logits, labels)
 
         total_loss += loss.item()
@@ -161,6 +170,7 @@ def main():
         cfg.train.model.dropout,
     )
     model = model.cuda()
+    model.forward = torch.compile(model.forward, dynamic=True)  
     if cfg.train.network.rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(

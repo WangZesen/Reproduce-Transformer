@@ -6,20 +6,46 @@ from src.conf import Config
 from src.data.sampler import DistributedTokenBatchSampler
 
 
+def generate_position_ids_from_cu_seqlens(cu_seqlens) -> torch.Tensor:
+    seqlens = cu_seqlens[1:] - cu_seqlens[:-1]
+    start_idx = cu_seqlens[:-1]
+    block_starts = torch.repeat_interleave(start_idx, seqlens)
+    total_len = cu_seqlens[-1]
+    global_position_ids = torch.arange(total_len)
+    position_ids = global_position_ids - block_starts
+    return position_ids
+
+
 def unbatched_collate_fn(
     batch: List[Tuple[torch.Tensor, torch.Tensor]],
-) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, int, int, torch.Tensor, int]:
+) -> dict:
     src_batch, tgt_batch = zip(*batch)
     src_packed = torch.cat(src_batch)
     # remove the last token (EOS) from target sequences for teacher forcing
     tgt_packed = torch.cat([tgt[:-1] for tgt in tgt_batch])
     # also prepare the labels by removing the first token (BOS) from target sequences
     label_packed = torch.cat([tgt[1:] for tgt in tgt_batch])
-    cum_src_lengths = torch.cumsum(torch.tensor([0] + [src.size(0) for src in src_batch]), dim=0, dtype=torch.int32)
-    cum_tgt_lengths = torch.cumsum(torch.tensor([0] + [tgt.size(0) - 1 for tgt in tgt_batch]), dim=0, dtype=torch.int32)
+    cu_src_lens = torch.cumsum(torch.tensor([0] + [src.size(0) for src in src_batch]), dim=0, dtype=torch.int32)
+    cu_tgt_lens = torch.cumsum(torch.tensor([0] + [tgt.size(0) - 1 for tgt in tgt_batch]), dim=0, dtype=torch.int32)
+
+    src_pos_ids = generate_position_ids_from_cu_seqlens(cu_src_lens)
+    tgt_pos_ids = generate_position_ids_from_cu_seqlens(cu_tgt_lens)
+
     max_src_len = max(src.size(0) for src in src_batch)
     max_tgt_len = max(tgt.size(0) - 1 for tgt in tgt_batch)
-    return src_packed, tgt_packed, cum_src_lengths, cum_tgt_lengths, max_src_len, max_tgt_len, label_packed, len(batch)
+
+    return {
+        "src": src_packed,
+        "tgt": tgt_packed,
+        "label": label_packed,
+        "cu_src_lens": cu_src_lens,
+        "cu_tgt_lens": cu_tgt_lens,
+        "src_pos_ids": src_pos_ids,
+        "tgt_pos_ids": tgt_pos_ids,
+        "max_src_len": max_src_len,
+        "max_tgt_len": max_tgt_len,
+        "batch_size": len(batch),
+    }
 
 
 def get_dataloaders(

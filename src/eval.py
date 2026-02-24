@@ -103,24 +103,26 @@ def main():
 
         with torch.no_grad():
             for batch in tqdm(test_ds, desc=f"Evaluating epoch {train_log.iloc[i]['epoch']}"):
-                src = batch[0].to("cuda", non_blocking=True)
-                cu_src_lens = batch[2].to("cuda", non_blocking=True)
+                src = batch["src"].cuda(non_blocking=True)
+                src_pos_ids = batch["src_pos_ids"].cuda(non_blocking=True)
+                cu_src_lens = batch["cu_src_lens"].cuda(non_blocking=True)
 
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                     preds = beam_search(
                         model,
                         src,
+                        src_pos_ids,
                         cu_src_lens,
-                        batch[4],
+                        batch["max_src_len"],
                         cfg.eval.beam_size,
                         cfg.eval.tolerance,
                         token_sos_id,
                         token_eos_id,
                     )
 
-                batch_size = batch[7]
-                tgt = batch[1].numpy(force=True)
-                cu_tgt_lens = batch[3].numpy(force=True)
+                batch_size = batch["batch_size"]
+                tgt = batch["tgt"].numpy(force=True)
+                cu_tgt_lens = batch["cu_tgt_lens"].numpy(force=True)
                 for j in range(batch_size):
                     start_idx = cu_tgt_lens[j]
                     end_idx = cu_tgt_lens[j + 1]
