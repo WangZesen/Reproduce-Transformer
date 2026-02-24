@@ -1,0 +1,3 @@
+[train.backend]
+name = "decent_dp"
+topology = "1p-ring"

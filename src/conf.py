@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, computed_field, ConfigDict
 from loguru import logger
 from functools import cached_property
 import tomli_w
+from enum import Enum
 
 PROJECT_DIR = os.path.relpath(os.path.join(os.path.dirname(__file__), ".."), ".")
 
@@ -18,6 +19,12 @@ class SPECIAL_TOKENS:
     SOS = "[SOS]"
     EOS = "[EOS]"
     ALL = [PAD, UNK, SOS, EOS]
+
+
+class Topology(str, Enum):
+    ONE_PEER_RING = "1p-ring"
+    ONE_PEER_EXP = "1p-exp"
+    COMPLETE = "complete"
 
 
 class _BaseModel(BaseModel):
@@ -123,7 +130,12 @@ class PyTorchDDPBackend(_BaseModel):
     name: Literal["pytorch_ddp"] = Field(default="pytorch_ddp")
 
 
-BACKENDS = Union[PyTorchDDPBackend]
+class DecentDPBackend(_BaseModel):
+    name: Literal["decent_dp"] = Field(default="decent_dp")
+    topology: Topology = Field(default=Topology.ONE_PEER_RING)
+
+
+BACKENDS = Union[PyTorchDDPBackend, DecentDPBackend]
 
 
 class Train(_BaseModel):
