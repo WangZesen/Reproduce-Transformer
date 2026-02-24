@@ -58,7 +58,7 @@ class DistributedTokenBatchSampler(Sampler[List[int]]):
             batch.append(data[i][2])
 
             if (src_num_tokens + tgt_num_tokens > self._max_tokens * 2) or (i == len(data) - 1):
-                if not self._drop_last or (src_num_tokens + tgt_num_tokens <= self._max_tokens * 2):
+                if not self._drop_last or (src_num_tokens + tgt_num_tokens > self._max_tokens * 2):
                     batches.append(batch)
                 batch = []
                 src_num_tokens = 0
