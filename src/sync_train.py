@@ -302,6 +302,9 @@ def main():
 
             if dist.is_initialized():
                 dist.barrier()
+    dist.destroy_process_group()
+    if (cfg.train.log.wandb_on) and (cfg.train.network.rank == 0):
+        wandb.finish()
 
 
 if __name__ == "__main__":
