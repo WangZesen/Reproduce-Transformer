@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 #SBATCH -J transformer
 #SBATCH --nodes=2
-#SBATCH --gpus-per-node=A40:4
-#SBATCH -t 6:00:00
+#SBATCH --gpus-per-node=A100:4
+#SBATCH -t 4:00:00
 #SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
@@ -50,5 +50,5 @@ JOB_ID=$JOB_ID srun uv run torchrun \
     --rdzv-backend=c10d \
     --rdzv-id=$RANDOM \
     --rdzv-endpoint=$head_node_ip:28054 \
-    -m src.decent_train --cfg-list $CONFIG_ARGS
+    -m src.sync_train --cfg-list $CONFIG_ARGS
 

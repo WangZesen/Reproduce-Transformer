@@ -2,7 +2,7 @@
 #SBATCH -J transformer
 #SBATCH --nodes=1
 #SBATCH --gpus-per-node=A100:4
-#SBATCH -t 6:00:00
+#SBATCH -t 3:00:00
 #SBATCH --switches=1
 #SBATCH -o log/%A/log.out
 #SBATCH -e log/%A/err.out
