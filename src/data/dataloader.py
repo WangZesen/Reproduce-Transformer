@@ -74,8 +74,8 @@ def get_dataloaders(
         batch_sampler=train_sampler,
         collate_fn=unbatched_collate_fn,
         pin_memory=True,
-        num_workers=1,
-        prefetch_factor=1,
+        num_workers=4,
+        prefetch_factor=2,
         persistent_workers=True,
     )
     val_loader = DataLoader(val_dataset, batch_sampler=val_sampler, collate_fn=unbatched_collate_fn, pin_memory=True)
