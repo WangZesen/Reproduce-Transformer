@@ -55,7 +55,9 @@ class TransformerModule(nn.Module):
         initrange = 0.1
         self._token_embedding.weight.data.uniform_(-initrange, initrange)
 
-    def encode(self, src: torch.Tensor, src_pos_ids: torch.Tensor, cu_src_lens: torch.Tensor, max_src_len: int) -> torch.Tensor:
+    def encode(
+        self, src: torch.Tensor, src_pos_ids: torch.Tensor, cu_src_lens: torch.Tensor, max_src_len: int
+    ) -> torch.Tensor:
         # get the token embeddings and add positional encodings
         src_emb = self._token_embedding(src) * math.sqrt(self._d_model)
         src_emb = src_emb + self._positional_encoding(src_pos_ids)
@@ -153,14 +155,18 @@ def beam_search(
     offset = 0
     for i in range(batch_size):
         for _ in range(beam_size):
-            repeated_memory[offset : offset + cu_src_lens_cpu[i + 1] - cu_src_lens_cpu[i]] = memory[cu_src_lens_cpu[i] : cu_src_lens_cpu[i + 1]]
+            repeated_memory[offset : offset + cu_src_lens_cpu[i + 1] - cu_src_lens_cpu[i]] = memory[
+                cu_src_lens_cpu[i] : cu_src_lens_cpu[i + 1]
+            ]
             repeated_cu_src_lens.append(offset)
             offset += cu_src_lens_cpu[i + 1] - cu_src_lens_cpu[i]
     repeated_cu_src_lens.append(offset)
     repeated_cu_src_lens = torch.tensor(repeated_cu_src_lens, device=device, dtype=torch.int32)
 
     # initialize the beam search variables
-    sequences = torch.full((batch_size, beam_size, 1), sos_token_id, dtype=torch.int32, device=device).view(batch_size * beam_size, 1)
+    sequences = torch.full((batch_size, beam_size, 1), sos_token_id, dtype=torch.int32, device=device).view(
+        batch_size * beam_size, 1
+    )
     sequence_scores = torch.zeros((batch_size, beam_size), device=device)
     sequence_scores[:, 1:] = -1e9  # set scores of non-initial beams to a very low value
     sequence_scores = sequence_scores.view(-1)
@@ -175,7 +181,9 @@ def beam_search(
         current_tokens = sequences[:, -1]
         pos_tgt = torch.full((batch_size * beam_size,), step, dtype=torch.int32, device=device)
         cu_tgt_lens = torch.arange(0, batch_size * beam_size + 1, dtype=torch.int32, device=device)
-        cu_key_lens = torch.arange(0, (batch_size * beam_size + 1) * (step + 1), step=step + 1, dtype=torch.int32, device=device)
+        cu_key_lens = torch.arange(
+            0, (batch_size * beam_size + 1) * (step + 1), step=step + 1, dtype=torch.int32, device=device
+        )
         max_seqlen_tgt = 1
         max_key_len = step + 1
 
@@ -215,7 +223,11 @@ def beam_search(
         sequence_scores = sequence_scores.view(-1)
 
         effective_seqlens = next_lengths.view(batch_size, beam_size)[batch_idx, beam_indices]
-        is_finished = is_finished.view(batch_size, beam_size)[batch_idx, beam_indices] | (next_token_indices == eos_token_id) | (effective_seqlens > src_lens + tolerance)
+        is_finished = (
+            is_finished.view(batch_size, beam_size)[batch_idx, beam_indices]
+            | (next_token_indices == eos_token_id)
+            | (effective_seqlens > src_lens + tolerance)
+        )
 
         effective_seqlens = effective_seqlens.view(-1)
         is_finished = is_finished.view(-1)
@@ -237,14 +249,14 @@ def beam_search(
         batch_effective_seqlens = effective_seqlens[i * beam_size : (i + 1) * beam_size]
         best_beam_idx = torch.argmax(batch_scores)
         best_sequence = batch_beams[best_beam_idx]
-        best_sequences.append(best_sequence.numpy(force=True)[:round(batch_effective_seqlens[best_beam_idx].item())])
+        best_sequences.append(best_sequence.numpy(force=True)[: round(batch_effective_seqlens[best_beam_idx].item())])
     return best_sequences
 
 
 def reorder_kv_cache_batched(past_key_values, beam_indices, batch_size):
     reordered_cache = ()
     beam_size = beam_indices.size(1)
-    
+
     batch_idx = torch.arange(batch_size, device=beam_indices.device).unsqueeze(1)
 
     for layer_cache in past_key_values:
@@ -258,7 +270,7 @@ def reorder_kv_cache_batched(past_key_values, beam_indices, batch_size):
             head_dim = k.size(2)
 
             current_seqlen = k.size(0) // (batch_size * beam_size)
-            
+
             k = k.view(batch_size, beam_size, current_seqlen, num_heads, head_dim)
             v = v.view(batch_size, beam_size, current_seqlen, num_heads, head_dim)
 
@@ -271,5 +283,5 @@ def reorder_kv_cache_batched(past_key_values, beam_indices, batch_size):
             reordered_self_kv_cache = (k_reordered, v_reordered)
 
         reordered_cache += ((reordered_self_kv_cache, cross_kv_cache),)
-        
+
     return reordered_cache
