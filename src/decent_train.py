@@ -22,7 +22,7 @@ from src.utils import (
 import wandb
 import pandas as pd
 from loguru import logger
-from typing import Tuple, Optional
+from typing import Tuple
 from dataclasses import dataclass
 
 
@@ -38,11 +38,13 @@ class DecentDP(torch.nn.Module):
         self,
         base_module: torch.nn.Module,
         topology: Topology,
+        comm_block_size_mb: float = 50.0,
     ):
         super().__init__()
 
         self._module = base_module.cuda()
         self._topology = topology
+        self._comm_block_size_mb = comm_block_size_mb
 
         # acquire distributed info from env variables
         self._world_size = dist.get_world_size()
@@ -62,8 +64,8 @@ class DecentDP(torch.nn.Module):
         # training step counter
         self._step = 0
 
-        # comm op handle
-        self._comm_op: Optional[dist.Work] = None
+        # comm op handles (one per block)
+        self._comm_ops: list[dist.Work] = []
 
     @torch.no_grad()
     def _sync_params(self):
@@ -75,6 +77,15 @@ class DecentDP(torch.nn.Module):
         self._bucket_total_size = sum([self._align(param.numel()) for param in self._module.parameters()])
         self._param_bucket = torch.zeros((self._bucket_total_size), dtype=torch.float32, device="cuda")
         self._comm_bucket = torch.zeros((self._bucket_total_size), dtype=torch.float32, device="cuda")
+
+        # Split buckets into fixed-size blocks (in number of float32 elements)
+        block_elems = max(1, int(self._comm_block_size_mb * 1024 * 1024 / 4))
+        self._param_blocks: list[torch.Tensor] = []
+        self._comm_blocks: list[torch.Tensor] = []
+        for start in range(0, self._bucket_total_size, block_elems):
+            end = min(start + block_elems, self._bucket_total_size)
+            self._param_blocks.append(self._param_bucket[start:end])
+            self._comm_blocks.append(self._comm_bucket[start:end])
 
         offset = 0
         for param in self._module.parameters():
@@ -91,8 +102,6 @@ class DecentDP(torch.nn.Module):
             param.data = chunk.view_as(param)
 
             offset += aligned_size
-
-        # self._hat_param_bucket = self._param_bucket.clone().detach()
 
     @torch.no_grad()
     def _create_comm_groups(self):
@@ -135,22 +144,24 @@ class DecentDP(torch.nn.Module):
 
     @torch.no_grad()
     def mix(self, gamma: float = 1.0):
-        if self._comm_op is not None:
-            self._comm_op.wait()
-            self._comm_op = None
-
-            self._param_bucket.sub_(self._param_bucket, alpha=gamma)
-            self._param_bucket.add_(self._comm_bucket, alpha=gamma)
+        for op, param_block, comm_block in zip(self._comm_ops, self._param_blocks, self._comm_blocks):
+            op.wait()
+            param_block.lerp_(comm_block, gamma)
+        self._comm_ops = []
 
     @torch.no_grad()
     def start_comm(self):
-        self._comm_bucket.copy_(self._param_bucket).mul_(self._comm_groups[self._step % len(self._comm_groups)].weight)
-        self._comm_op = dist.all_reduce(
-            self._comm_bucket,
-            op=dist.ReduceOp.SUM,
-            group=self._comm_groups[self._step % len(self._comm_groups)].group,
-            async_op=True,
-        )
+        comm_group = self._comm_groups[self._step % len(self._comm_groups)]
+        self._comm_ops = []
+        for param_block, comm_block in zip(self._param_blocks, self._comm_blocks):
+            comm_block.copy_(param_block).mul_(comm_group.weight)
+            op = dist.all_reduce(
+                comm_block,
+                op=dist.ReduceOp.SUM,
+                group=comm_group.group,
+                async_op=True,
+            )
+            self._comm_ops.append(op)  # type: ignore
         self._step += 1
 
     @torch.no_grad()
@@ -366,7 +377,7 @@ def main():
         cfg.train.model.dropout,
     )
     model = model.cuda()
-    model.forward = torch.compile(model.forward, dynamic=True)
+    model.forward = torch.compile(model.forward)
     if cfg.train.network.rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(
@@ -386,7 +397,7 @@ def main():
 
     # Decentralized Data Parallel
     assert cfg.train.network.world_size > 1
-    model = DecentDP(model, topology=cfg.train.backend.topology)
+    model = DecentDP(model, topology=cfg.train.backend.topology, comm_block_size_mb=cfg.train.backend.comm_block_size_mb)
 
     # Training loop
     global_step = 0
@@ -491,6 +502,7 @@ def main():
     dist.destroy_process_group()
     if (cfg.train.log.wandb_on) and (cfg.train.network.rank == 0):
         wandb.finish()
+
 
 if __name__ == "__main__":
     main()

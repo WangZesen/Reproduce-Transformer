@@ -133,6 +133,7 @@ class PyTorchDDPBackend(_BaseModel):
 class DecentDPBackend(_BaseModel):
     name: Literal["decent_dp"] = Field(default="decent_dp")
     topology: Topology = Field(default=Topology.ONE_PEER_RING)
+    comm_block_size_mb: float = Field(default=50.0)
 
 
 BACKENDS = Union[PyTorchDDPBackend, DecentDPBackend]
