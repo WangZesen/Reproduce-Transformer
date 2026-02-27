@@ -1,8 +1,8 @@
 [train.optim]
 name = "adam"
-lr = 0.0020
-betas = [0.974, 0.999]
-eps = 1e-9
+lr = 0.0025
+betas = [0.9, 0.999]
+eps = 1e-8
 
 [train.model]
 d_model = 512

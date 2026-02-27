@@ -1,13 +1,11 @@
 [train]
-max_tokens_per_batch = 25000
-label_smoothing = 0.1
-max_epochs = 20
+max_tokens_per_batch = 100000
 
 [train.optim]
 name = "adam"
-lr = 0.0007
+lr = 0.0012
 betas = [0.9, 0.98]
-eps = 1e-9
+eps = 1e-8
 
 [train.model]
 d_model = 512
