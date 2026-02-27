@@ -82,6 +82,7 @@ def get_optim_fn(cfg: Config) -> Callable[[List[Tuple[str, torch.Tensor]]], Opti
                     lr=cfg.train.optim.lr,
                     betas=cfg.train.optim.betas,
                     eps=cfg.train.optim.eps,
+                    fused=True,
                 )
 
             return optim_fn
