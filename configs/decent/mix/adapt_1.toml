@@ -1,0 +1,6 @@
+[train.backend]
+name = "decent_dp"
+[train.backend.mix]
+name = "adaptive"
+p = 1.0
+start_step = 4000

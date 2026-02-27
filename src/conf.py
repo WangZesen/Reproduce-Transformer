@@ -130,10 +130,24 @@ class PyTorchDDPBackend(_BaseModel):
     name: Literal["pytorch_ddp"] = Field(default="pytorch_ddp")
 
 
+class NormalMixConfig(_BaseModel):
+    name: Literal["normal"] = Field(default="normal")
+
+
+class AdaptiveMixConfig(_BaseModel):
+    name: Literal["adaptive"] = Field(default="adaptive")
+    p: float = Field(default=1.0, description="Exponent for adjusting the mixing ratio")
+    start_step: int = Field(default=4000, description="Step to start adjusting the mixing ratio")
+
+
+MIXING_CONFIGS = Union[NormalMixConfig, AdaptiveMixConfig]
+
+
 class DecentDPBackend(_BaseModel):
     name: Literal["decent_dp"] = Field(default="decent_dp")
     topology: Topology = Field(default=Topology.ONE_PEER_RING)
     comm_block_size_mb: float = Field(default=50.0)
+    mix: MIXING_CONFIGS = Field(default_factory=NormalMixConfig, discriminator="name")
 
 
 BACKENDS = Union[PyTorchDDPBackend, DecentDPBackend]

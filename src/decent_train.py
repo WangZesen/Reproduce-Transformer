@@ -26,6 +26,26 @@ from typing import Tuple
 from dataclasses import dataclass
 
 
+def get_mixing_factor(cfg: Config, step: int) -> float:
+    assert cfg.train.backend.name == "decent_dp"
+    mix_cfg = cfg.train.backend.mix
+
+    match mix_cfg.name:
+        case "normal":
+            return 1.0
+        case "adaptive":
+            if step < mix_cfg.start_step:
+                return 1.0
+            else:
+                max_lr = (
+                    cfg.train.optim.lr * (cfg.train.lr_scheduler.warmup_steps**0.5) * (mix_cfg.start_step ** (-0.5))
+                )
+                cur_lr = cfg.train.optim.lr * (cfg.train.lr_scheduler.warmup_steps**0.5) * ((step + 1) ** (-0.5))
+                return (cur_lr / max_lr) ** mix_cfg.p
+        case _:
+            raise ValueError(f"Unsupported mixing config: {mix_cfg.name}")
+
+
 @dataclass
 class CommGroup:
     ranks: list[int]
@@ -284,7 +304,8 @@ def train_epoch(
             logit = model(src, tgt, src_pos_ids, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
             loss = criterion(logit, label)
         loss.backward()
-        model.mix()
+        gamma = get_mixing_factor(cfg, step)
+        model.mix(gamma)
         optimizer.step()
         lr_scheduler.step()
         model.start_comm()
@@ -397,7 +418,9 @@ def main():
 
     # Decentralized Data Parallel
     assert cfg.train.network.world_size > 1
-    model = DecentDP(model, topology=cfg.train.backend.topology, comm_block_size_mb=cfg.train.backend.comm_block_size_mb)
+    model = DecentDP(
+        model, topology=cfg.train.backend.topology, comm_block_size_mb=cfg.train.backend.comm_block_size_mb
+    )
 
     # Training loop
     global_step = 0
@@ -452,7 +475,8 @@ def main():
 
             if cfg.train.network.rank == 0:
                 logger.info(
-                    f"[Epoch {epoch + 1}] train loss: {train_loss:.6f}, val loss: {val_loss:.6f}, d2c: {d2c:.6f}, "
+                    f"[Epoch {epoch + 1}] train loss: {train_loss:.6f}, val loss: {val_loss:.6f}, "
+                    f"d2c: {d2c:.6f}, gamma: {get_mixing_factor(cfg, global_step):.6f}, "
                     f"epoch time: {train_time:.2f} s, total train time: {total_train_time:.2f} s"
                 )
                 checkpoint_dir = ""
@@ -488,6 +512,7 @@ def main():
                             "epoch_train_loss": train_loss,
                             "val_loss": val_loss,
                             "d2c": d2c,
+                            "gamma": get_mixing_factor(cfg, global_step),
                             "epoch_time": train_time,
                             "total_train_time": total_train_time,
                             "epoch": epoch + 1,
