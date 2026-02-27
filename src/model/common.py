@@ -26,8 +26,19 @@ class FlashAttention(nn.Module):
         self._is_cross_attention = is_cross_attention
         self._dropout_rate = dropout
 
-        self._q_proj = nn.Linear(d_model, d_model, bias=True)
-        self._kv_proj = nn.Linear(d_model, d_model * 2, bias=True)
+        # For self-attention, fuse Q+K+V into one projection so the GEMM is
+        # (total_tokens, d_model) @ (d_model, 3*d_model) instead of two smaller
+        # matmuls, which gives better SM utilisation.
+        # For cross-attention the queries still come from a different source, so
+        # we keep separate projections there.
+        if is_cross_attention:
+            self._q_proj = nn.Linear(d_model, d_model, bias=True)
+            self._kv_proj = nn.Linear(d_model, d_model * 2, bias=True)
+            self._qkv_proj = None
+        else:
+            self._qkv_proj = nn.Linear(d_model, d_model * 3, bias=True)
+            self._q_proj = None  # unused for self-attention
+            self._kv_proj = None  # unused for self-attention
         self._out_proj = nn.Linear(d_model, d_model, bias=True)
 
     def forward(
@@ -42,14 +53,16 @@ class FlashAttention(nn.Module):
         past_key_value: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         use_cache: bool = False,
     ):
-        q = self._q_proj(hidden_states).view(-1, self._num_heads, self._d_head)
-
-        if self._is_cross_attention and encoder_hidden_states is not None:
-            kv = self._kv_proj(encoder_hidden_states).view(-1, 2, self._num_heads, self._d_head)
+        if self._is_cross_attention:
+            # Cross-attention: Q from decoder hidden states, K/V from encoder
+            assert encoder_hidden_states is not None
+            q = self._q_proj(hidden_states).view(-1, self._num_heads, self._d_head)  # type: ignore[misc]
+            kv = self._kv_proj(encoder_hidden_states).view(-1, 2, self._num_heads, self._d_head)  # type: ignore[misc]
             k, v = kv.unbind(dim=1)
         else:
-            kv = self._kv_proj(hidden_states).view(-1, 2, self._num_heads, self._d_head)
-            k, v = kv.unbind(dim=1)
+            # Self-attention: fused QKV projection — one large GEMM
+            qkv = self._qkv_proj(hidden_states).view(-1, 3, self._num_heads, self._d_head)  # type: ignore[misc]
+            q, k, v = qkv.unbind(dim=1)
 
         if past_key_value is not None:
             k_cache, v_cache = past_key_value
