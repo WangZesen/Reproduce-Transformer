@@ -140,7 +140,14 @@ class AdaptiveMixConfig(_BaseModel):
     start_step: int = Field(default=4000, description="Step to start adjusting the mixing ratio")
 
 
-MIXING_CONFIGS = Union[NormalMixConfig, AdaptiveMixConfig]
+class RandomAdaptiveMixConfig(_BaseModel):
+    name: Literal["random_adaptive"] = Field(default="random_adaptive")
+    p: float = Field(default=1.0, description="Exponent for adjusting the mixing ratio")
+    sync_interval: int = Field(default=100, description="Interval to globally synchronize the momentum v buckets")
+    start_step: int = Field(default=4000, description="Step to start adjusting the mixing ratio")
+
+
+MIXING_CONFIGS = Union[NormalMixConfig, AdaptiveMixConfig, RandomAdaptiveMixConfig]
 
 
 class DecentDPBackend(_BaseModel):
@@ -165,6 +172,7 @@ class Train(_BaseModel):
     lr_scheduler: LRScheduler = Field(default_factory=LRScheduler)
     log: Log = Field(default_factory=Log)
     backend: BACKENDS = Field(default_factory=PyTorchDDPBackend, discriminator="name")
+    use_profiler: bool = Field(default=False)
 
     @computed_field(repr=False)
     @property

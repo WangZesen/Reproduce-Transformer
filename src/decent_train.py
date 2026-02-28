@@ -1,12 +1,13 @@
 import os
 import time
 import torch
+import torch.nn.functional as F
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.profiler import schedule, profile, ProfilerActivity
-from src.conf import parse_config, Config, dump_config, Topology
+from src.conf import RandomAdaptiveMixConfig, parse_config, Config, dump_config, Topology
 from src.data.dataloader import get_dataloaders, DataLoader
 from src.data.dataset import get_datasets
 from src.model import TransformerModule
@@ -23,6 +24,7 @@ import wandb
 import pandas as pd
 from loguru import logger
 from typing import Tuple
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 
@@ -33,7 +35,7 @@ def get_mixing_factor(cfg: Config, step: int) -> float:
     match mix_cfg.name:
         case "normal":
             return 1.0
-        case "adaptive":
+        case "adaptive" | "random_adaptive":
             if step < mix_cfg.start_step:
                 return 1.0
             else:
@@ -58,6 +60,7 @@ class DecentDP(torch.nn.Module):
         self,
         base_module: torch.nn.Module,
         topology: Topology,
+        sync_momentum_interval: int = -1,
         comm_block_size_mb: float = 50.0,
     ):
         super().__init__()
@@ -65,7 +68,7 @@ class DecentDP(torch.nn.Module):
         self._module = base_module.cuda()
         self._topology = topology
         self._comm_block_size_mb = comm_block_size_mb
-
+        self._sync_momentum_interval = sync_momentum_interval
         # acquire distributed info from env variables
         self._world_size = dist.get_world_size()
         self._rank = dist.get_rank()
@@ -104,8 +107,8 @@ class DecentDP(torch.nn.Module):
         self._comm_blocks: list[torch.Tensor] = []
         for start in range(0, self._bucket_total_size, block_elems):
             end = min(start + block_elems, self._bucket_total_size)
-            self._param_blocks.append(self._param_bucket[start:end])
-            self._comm_blocks.append(self._comm_bucket[start:end])
+            self._param_blocks.append(self._param_bucket.narrow(0, start, end - start))
+            self._comm_blocks.append(self._comm_bucket.narrow(0, start, end - start))
 
         offset = 0
         for param in self._module.parameters():
@@ -115,13 +118,18 @@ class DecentDP(torch.nn.Module):
             assert param.is_contiguous(), "Parameters must be contiguous"
 
             # Copy parameter data into the bucket
-            chunk = self._param_bucket[offset : offset + size]
+            chunk = self._param_bucket.narrow(0, offset, size)
             chunk.copy_(param.data.view(-1))
 
             # Store a view of the chunk back to the parameter for easy access
             param.data = chunk.view_as(param)
 
             offset += aligned_size
+
+        self._comm_bucket.copy_(self._param_bucket)
+        self._momentum_m_bucket = torch.zeros_like(self._param_bucket)
+        self._momentum_v_bucket = torch.zeros_like(self._param_bucket)
+        self._synced_sample_weights = torch.zeros_like(self._param_bucket)
 
     @torch.no_grad()
     def _create_comm_groups(self):
@@ -164,9 +172,30 @@ class DecentDP(torch.nn.Module):
 
     @torch.no_grad()
     def mix(self, gamma: float = 1.0):
-        for op, param_block, comm_block in zip(self._comm_ops, self._param_blocks, self._comm_blocks):
+        for op in self._comm_ops:
             op.wait()
-            param_block.lerp_(comm_block, gamma)
+        if self._sync_momentum_interval <= 0:
+            self._param_bucket.lerp_(self._comm_bucket, gamma)
+        else:
+            if gamma == 1.0:
+                self._param_bucket.lerp_(self._comm_bucket, gamma)
+            else:
+                generator = torch.Generator(device="cuda")
+                generator.manual_seed(self._step * 1007)
+
+                for param_block, comm_block, offset in zip(
+                    self._param_blocks,
+                    self._comm_blocks,
+                    range(0, self._bucket_total_size, self._comm_blocks[0].numel()),
+                ):
+                    block_k = int(gamma * param_block.numel())
+                    if block_k == 0:
+                        continue
+                    u = torch.rand(param_block.numel(), generator=generator, device="cuda")
+                    keys = -torch.log(u) * self._synced_sample_weights[offset : offset + param_block.numel()]
+                    threshold = torch.kthvalue(keys, round(gamma * keys.numel())).values
+                    param_block[:] = torch.where(keys <= threshold, comm_block, param_block)
+
         self._comm_ops = []
 
     @torch.no_grad()
@@ -183,6 +212,8 @@ class DecentDP(torch.nn.Module):
             )
             self._comm_ops.append(op)  # type: ignore
         self._step += 1
+        if (self._sync_momentum_interval > 0) and (self._step % self._sync_momentum_interval == 0):
+            self.sync_momentum_v_buckets()
 
     @torch.no_grad()
     def global_avg(self) -> float:
@@ -206,35 +237,40 @@ class DecentDP(torch.nn.Module):
                 dist.broadcast(buffer, src=0)
 
     @torch.no_grad()
-    def extract_momentum(self, optim: torch.optim.Optimizer) -> torch.Tensor:
-        if isinstance(optim, torch.optim.SGD):
-            momentum_buffer = []
-            for param in self._module.parameters():
-                if param in optim.state and "momentum_buffer" in optim.state[param]:
-                    momentum_buffer.append(optim.state[param]["momentum_buffer"].view(-1))
-                    if self._align(param.numel()) > param.numel():
-                        padding = self._align(param.numel()) - param.numel()
-                        momentum_buffer.append(torch.zeros(padding, device=param.device))
-                else:
-                    raise ValueError(
-                        "Momentum buffer not found for a parameter. Make sure to call this after the first optimization step."
-                    )
-            return torch.cat(momentum_buffer)
-        elif isinstance(optim, torch.optim.Adam) or isinstance(optim, torch.optim.AdamW):
-            momentum_buffer = []
-            for param in self._module.parameters():
-                if param in optim.state and "exp_avg" in optim.state[param]:
-                    momentum_buffer.append(optim.state[param]["exp_avg"].view(-1))
-                    if self._align(param.numel()) > param.numel():
-                        padding = self._align(param.numel()) - param.numel()
-                        momentum_buffer.append(torch.zeros(padding, device=param.device))
-                else:
-                    raise ValueError(
-                        "Exp_avg buffer not found for a parameter. Make sure to call this after the first optimization step."
-                    )
-            return torch.cat(momentum_buffer)
-        else:
-            raise ValueError("Unsupported optimizer type for momentum extraction")
+    def create_bucket_for_momentum(self, optim: torch.optim.Optimizer):
+        offset = 0
+        for param in self._module.parameters():
+            size = param.numel()
+            aligned_size = self._align(size)
+
+            assert param in optim.state, "Parameter not found in optimizer state"
+            if isinstance(optim, torch.optim.SGD):
+                assert "momentum_buffer" in optim.state[param], "Momentum buffer not found in optimizer state"
+                momentum_buffer = optim.state[param]["momentum_buffer"]
+                self._momentum_m_bucket[offset : offset + param.numel()].copy_(momentum_buffer.view(-1))
+                optim.state[param]["momentum_buffer"] = self._momentum_m_bucket[
+                    offset : offset + param.numel()
+                ].view_as(param)
+            elif isinstance(optim, torch.optim.Adam) or isinstance(optim, torch.optim.AdamW):
+                assert "exp_avg" in optim.state[param], "Exp_avg buffer not found in optimizer state"
+                exp_avg_buffer = optim.state[param]["exp_avg"]
+                self._momentum_m_bucket[offset : offset + param.numel()].copy_(exp_avg_buffer.view(-1))
+                optim.state[param]["exp_avg"] = self._momentum_m_bucket[offset : offset + param.numel()].view_as(param)
+                assert "exp_avg_sq" in optim.state[param], "Exp_avg_sq buffer not found in optimizer state"
+                exp_avg_sq_buffer = optim.state[param]["exp_avg_sq"]
+                self._momentum_v_bucket[offset : offset + param.numel()].copy_(exp_avg_sq_buffer.view(-1))
+                optim.state[param]["exp_avg_sq"] = self._momentum_v_bucket[offset : offset + param.numel()].view_as(
+                    param
+                )
+            else:
+                raise ValueError("Unsupported optimizer type for momentum bucket creation")
+            offset += aligned_size
+
+    @torch.no_grad()
+    def sync_momentum_v_buckets(self):
+        self._synced_sample_weights.copy_(self._momentum_v_bucket)
+        dist.all_reduce(self._synced_sample_weights, op=dist.ReduceOp.AVG)
+        self._synced_sample_weights.sqrt_().add_(1e-8).reciprocal_()
 
     def _align(self, size: int):
         return ((size + 31) // 32) * 32
@@ -335,7 +371,8 @@ def train_epoch(
                     },
                     step=step,
                 )
-        profiler.step()
+        if cfg.train.use_profiler:
+            profiler.step()
 
     torch.cuda.synchronize()
     return loss_metric.global_avg, step, time.time() - start_time
@@ -371,6 +408,23 @@ def val_epoch(
 
         total_loss += loss.item()
     return total_loss / len(val_ds)
+
+
+def initialize_optim_groups(model: DecentDP, optim: Optimizer):
+    # attach a dummy gradient to each parameter to ensure optimizer state is initialized for all parameters
+    for param in model.parameters():
+        if param.requires_grad and param.grad is None:
+            param.grad = torch.zeros_like(param.data)
+
+    for group in optim.param_groups:
+        if isinstance(optim, torch.optim.Adam):
+            _ = optim._init_group(group, [], [], [], [], [], [])
+        elif isinstance(optim, torch.optim.SGD):
+            _ = optim._init_group(group, [], [], [])
+        else:
+            raise ValueError("Unsupported optimizer type for group initialization")
+
+    optim.zero_grad()
 
 
 def main():
@@ -419,8 +473,16 @@ def main():
     # Decentralized Data Parallel
     assert cfg.train.network.world_size > 1
     model = DecentDP(
-        model, topology=cfg.train.backend.topology, comm_block_size_mb=cfg.train.backend.comm_block_size_mb
+        model,
+        topology=cfg.train.backend.topology,
+        sync_momentum_interval=cfg.train.backend.mix.sync_interval
+        if isinstance(cfg.train.backend.mix, RandomAdaptiveMixConfig)
+        else -1,
+        comm_block_size_mb=cfg.train.backend.comm_block_size_mb,
     )
+
+    initialize_optim_groups(model, optimizer)
+    model.create_bucket_for_momentum(optimizer)
 
     # Training loop
     global_step = 0
@@ -444,16 +506,21 @@ def main():
         ]
     )
 
-    with profile(
-        activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
-        schedule=schedule(wait=128, warmup=2, active=8, repeat=1),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(
-            os.path.join(cfg.train.log.log_dir, "tb_trace"), worker_name=f"worker_{cfg.train.network.rank:02d}"
-        ),
-        record_shapes=True,
-        with_stack=True,
-        profile_memory=True,
-    ) as p:
+    if cfg.train.use_profiler:
+        prof = profile(
+            activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA],
+            schedule=schedule(wait=128, warmup=2, active=8, repeat=1),
+            on_trace_ready=torch.profiler.tensorboard_trace_handler(
+                os.path.join(cfg.train.log.log_dir, "tb_trace"), worker_name=f"worker_{cfg.train.network.rank:02d}"
+            ),
+            record_shapes=True,
+            with_stack=True,
+            profile_memory=True,
+        )
+    else:
+        prof = nullcontext()
+
+    with prof as p:
         for epoch in range(start_epoch, cfg.train.max_epochs):
             train_ds.batch_sampler.set_epoch(epoch)  # type: ignore
             train_loss, global_step, train_time = train_epoch(

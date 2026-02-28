@@ -1,0 +1,7 @@
+[train.backend]
+name = "decent_dp"
+[train.backend.mix]
+name = "random_adaptive"
+p = 1.0
+start_step = 4000
+sync_interval = 50
