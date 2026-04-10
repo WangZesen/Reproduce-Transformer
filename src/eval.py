@@ -136,7 +136,7 @@ def main():
         )
         out_log.loc[cnt] = train_log.iloc[i].values.tolist() + [bleu_score, meteor_score]
         cnt += 1
-    out_log.to_csv(test_log_dir, index=False)
+        out_log.to_csv(test_log_dir, index=False)
     logger.info(f"Saved evaluation log to {test_log_dir}")
 
     if cfg.train.log.wandb_on:
