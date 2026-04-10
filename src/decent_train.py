@@ -1,7 +1,6 @@
 import os
 import time
 import torch
-import torch.nn.functional as F
 from torch.nn import Module
 import torch.distributed as dist
 from torch.optim import Optimizer
@@ -180,21 +179,8 @@ class DecentDP(torch.nn.Module):
             if gamma == 1.0:
                 self._param_bucket.lerp_(self._comm_bucket, gamma)
             else:
-                generator = torch.Generator(device="cuda")
-                generator.manual_seed(self._step * 1007)
-
-                for param_block, comm_block, offset in zip(
-                    self._param_blocks,
-                    self._comm_blocks,
-                    range(0, self._bucket_total_size, self._comm_blocks[0].numel()),
-                ):
-                    block_k = int(gamma * param_block.numel())
-                    if block_k == 0:
-                        continue
-                    u = torch.rand(param_block.numel(), generator=generator, device="cuda")
-                    keys = -torch.log(u) * self._synced_sample_weights[offset : offset + param_block.numel()]
-                    threshold = torch.kthvalue(keys, round(gamma * keys.numel())).values
-                    param_block[:] = torch.where(keys <= threshold, comm_block, param_block)
+                weight = gamma ** self._synced_sample_weights
+                self._param_bucket.lerp_(self._comm_bucket, weight)
 
         self._comm_ops = []
 
@@ -270,7 +256,9 @@ class DecentDP(torch.nn.Module):
     def sync_momentum_v_buckets(self):
         self._synced_sample_weights.copy_(self._momentum_v_bucket)
         dist.all_reduce(self._synced_sample_weights, op=dist.ReduceOp.AVG)
-        self._synced_sample_weights.sqrt_().add_(1e-8).reciprocal_()
+        self._synced_sample_weights.sqrt_().add_(1e-8).log_()
+        self._synced_sample_weights.sub_(self._synced_sample_weights.mean())
+        self._synced_sample_weights.div_(self._synced_sample_weights.abs().max()).mul_(2.0).exp_()
 
     def _align(self, size: int):
         return ((size + 31) // 32) * 32
@@ -340,6 +328,8 @@ def train_epoch(
             logit = model(src, tgt, src_pos_ids, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
             loss = criterion(logit, label)
         loss.backward()
+        if cfg.train.clip_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.clip_grad_norm)
         gamma = get_mixing_factor(cfg, step)
         model.mix(gamma)
         optimizer.step()
