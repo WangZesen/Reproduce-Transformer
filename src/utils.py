@@ -71,6 +71,21 @@ def initialize() -> None:
             logger.info(f"Initialized the process group with {dist.get_world_size()} processes.")
         dist.barrier()
 
+def get_parameter_groups(params: List[Tuple[str, torch.Tensor]], weight_decay: float) -> List[dict]:
+    decay_params = []
+    no_decay_params = []
+    for name, param in params:
+        if not param.requires_grad:
+            continue
+        if len(param.shape) == 1 or name.endswith(".bias"):
+            no_decay_params.append(param)
+        else:
+            decay_params.append(param)
+    return [
+        {"params": decay_params, "weight_decay": weight_decay},
+        {"params": no_decay_params, "weight_decay": 0.0},
+    ]
+
 
 def get_optim_fn(cfg: Config) -> Callable[[List[Tuple[str, torch.Tensor]]], Optimizer]:
     match cfg.train.optim.name.lower():
@@ -82,6 +97,20 @@ def get_optim_fn(cfg: Config) -> Callable[[List[Tuple[str, torch.Tensor]]], Opti
                     lr=cfg.train.optim.lr,
                     betas=cfg.train.optim.betas,
                     eps=cfg.train.optim.eps,
+                    fused=True,
+                )
+
+            return optim_fn
+
+        case "adamw":
+
+            def optim_fn(params: List[Tuple[str, torch.Tensor]]) -> Optimizer:
+                return torch.optim.AdamW(
+                    get_parameter_groups(params, weight_decay=cfg.train.optim.weight_decay),  # type: ignore
+                    lr=cfg.train.optim.lr,
+                    betas=cfg.train.optim.betas,
+                    eps=cfg.train.optim.eps,
+                    weight_decay=cfg.train.optim.weight_decay,  # type: ignore
                     fused=True,
                 )
 
@@ -144,6 +173,8 @@ def get_group_name(cfg: Config) -> str:
     if cfg.train.backend.name == "decent_dp":
         if cfg.train.optim.name == "adam":
             name += f"d-{cfg.train.optim.name.lower()}"
+        if cfg.train.optim.name == "adamw":
+            name += f"d-{cfg.train.optim.name.lower()}-wd{cfg.train.optim.weight_decay:.2f}"
         else:
             raise ValueError(f"Unsupported optimizer for decent_dp: {cfg.train.optim.name}")
         name += f" - {cfg.train.backend.topology.value}"
