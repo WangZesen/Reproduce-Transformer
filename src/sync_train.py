@@ -79,6 +79,8 @@ def train_epoch(
             loss = criterion(logit, label)
 
         loss.backward()
+        if cfg.train.clip_grad_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.clip_grad_norm)
         optimizer.step()
         lr_scheduler.step()
 
@@ -170,7 +172,7 @@ def main():
         cfg.train.model.dropout,
     )
     model = model.cuda()
-    model.forward = torch.compile(model.forward, dynamic=True)
+    model.forward = torch.compile(model.forward)
     if cfg.train.network.rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(

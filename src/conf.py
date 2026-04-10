@@ -91,8 +91,15 @@ class AdamConfig(_BaseModel):
     betas: Tuple[float, float] = Field(default=(0.9, 0.98))
     eps: float = Field(default=1e-9)
 
+class AdamWConfig(_BaseModel):
+    name: Literal["adamw"] = Field(default="adamw")
+    lr: float = Field(default=0.0007)
+    betas: Tuple[float, float] = Field(default=(0.9, 0.98))
+    eps: float = Field(default=1e-9)
+    weight_decay: float = Field(default=0.01)
 
-OPTIMIZERS = Union[AdamConfig]
+
+OPTIMIZERS = Union[AdamConfig, AdamWConfig]
 
 
 class LRScheduler(_BaseModel):
@@ -173,6 +180,7 @@ class Train(_BaseModel):
     log: Log = Field(default_factory=Log)
     backend: BACKENDS = Field(default_factory=PyTorchDDPBackend, discriminator="name")
     use_profiler: bool = Field(default=False)
+    clip_grad_norm: float = Field(default=0.0, description="Max norm for gradient clipping. Set to 0 to disable.")
 
     @computed_field(repr=False)
     @property
