@@ -1,17 +1,19 @@
 [train]
-max_tokens_per_batch = 100000
+max_tokens_per_batch = 70000
+label_smoothing = 0.1
+max_epochs = 3
 
 [train.optim]
 name = "adam"
-lr = 0.0012
-betas = [0.9, 0.999]
+lr = 0.0018
+betas = [0.974, 0.999]
 eps = 1e-8
 
 [train.model]
-d_model = 512
-num_heads = 8
+d_model = 1024
+num_heads = 16
 num_layers = 6
-dim_feedforward = 2048
+dim_feedforward = 4096
 dropout = 0.1
 
 [train.lr_scheduler]

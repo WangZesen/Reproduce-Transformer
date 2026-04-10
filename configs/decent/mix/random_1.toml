@@ -4,4 +4,4 @@ name = "decent_dp"
 name = "random_adaptive"
 p = 1.0
 start_step = 4000
-sync_interval = 50
+sync_interval = 10
