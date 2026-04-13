@@ -93,8 +93,8 @@ def train_epoch(
             elapsed_time = current_log_time - last_log_time
             logger.info(
                 f"step: {step} ({elapsed_time / (batch_idx - last_log_idx + 1):.3f} s/it), "
-                f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}",
-                f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB",
+                f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}, "
+                f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB"
             )
             last_log_time = current_log_time
             last_log_idx = batch_idx
@@ -170,7 +170,7 @@ def main():
         cfg.train.model.dropout,
     )
     model = model.cuda()
-    model.forward = torch.compile(model.forward, dynamic=True)
+    model.forward = torch.compile(model.forward) # dynamic=True)
     if cfg.train.network.rank == 0:
         if cfg.train.log.wandb_on:
             wandb.init(
@@ -186,7 +186,7 @@ def main():
         dump_config(cfg, os.path.join(cfg.train.log.log_dir, "config.toml"))
 
     optimizer = get_optim(cfg, model)
-    lr_scheduler = get_lr_scheduler(cfg, optimizer)
+    lr_scheduler = get_lr_scheduler(cfg, optimizer, len(train_ds))
 
     # DDP
     if cfg.train.network.world_size > 1:

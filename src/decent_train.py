@@ -26,7 +26,7 @@ from typing import Tuple
 from dataclasses import dataclass
 
 
-def get_mixing_factor(cfg: Config, step: int) -> float:
+def get_mixing_factor(cfg: Config, step: int, step_per_epoch: int, lr: float) -> float:
     assert cfg.train.backend.name == "decent_dp"
     mix_cfg = cfg.train.backend.mix
 
@@ -34,14 +34,11 @@ def get_mixing_factor(cfg: Config, step: int) -> float:
         case "normal":
             return 1.0
         case "adaptive":
-            if step < mix_cfg.start_step:
+            if step // step_per_epoch < mix_cfg.start_epoch:
                 return 1.0
             else:
-                max_lr = (
-                    cfg.train.optim.lr * (cfg.train.lr_scheduler.warmup_steps**0.5) * (mix_cfg.start_step ** (-0.5))
-                )
-                cur_lr = cfg.train.optim.lr * (cfg.train.lr_scheduler.warmup_steps**0.5) * ((step + 1) ** (-0.5))
-                return (cur_lr / max_lr) ** mix_cfg.p
+                max_lr = cfg.train.optim.lr
+                return (lr / max_lr) ** mix_cfg.p
         case _:
             raise ValueError(f"Unsupported mixing config: {mix_cfg.name}")
 
@@ -304,7 +301,7 @@ def train_epoch(
             logit = model(src, tgt, src_pos_ids, tgt_pos_ids, cu_src_lens, cu_tgt_lens, max_src_len, max_tgt_len)
             loss = criterion(logit, label)
         loss.backward()
-        gamma = get_mixing_factor(cfg, step)
+        gamma = get_mixing_factor(cfg, step, total_step, lr_scheduler.get_last_lr()[0])
         model.mix(gamma)
         optimizer.step()
         lr_scheduler.step()
@@ -321,8 +318,8 @@ def train_epoch(
             elapsed_time = current_log_time - last_log_time
             logger.info(
                 f"step: {step} ({elapsed_time / (batch_idx - last_log_idx + 1):.3f} s/it), "
-                f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}",
-                f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB",
+                f"loss: {loss_metric.avg:.6f}, lr: {lr:.6f}, tpb: {tpb_metric.avg:.1f}, "
+                f"mem: {torch.cuda.max_memory_allocated() / 1024 / 1024 / 1024:.2f} GB"
             )
             last_log_time = current_log_time
             last_log_idx = batch_idx
@@ -414,7 +411,7 @@ def main():
         dump_config(cfg, os.path.join(cfg.train.log.log_dir, "config.toml"))
 
     optimizer = get_optim(cfg, model)
-    lr_scheduler = get_lr_scheduler(cfg, optimizer)
+    lr_scheduler = get_lr_scheduler(cfg, optimizer, len(train_ds))
 
     # Decentralized Data Parallel
     assert cfg.train.network.world_size > 1
@@ -476,7 +473,7 @@ def main():
             if cfg.train.network.rank == 0:
                 logger.info(
                     f"[Epoch {epoch + 1}] train loss: {train_loss:.6f}, val loss: {val_loss:.6f}, "
-                    f"d2c: {d2c:.6f}, gamma: {get_mixing_factor(cfg, global_step):.6f}, "
+                    f"d2c: {d2c:.6f}, gamma: {get_mixing_factor(cfg, global_step, len(train_ds), lr_scheduler.get_last_lr()[0]):.6f}, "
                     f"epoch time: {train_time:.2f} s, total train time: {total_train_time:.2f} s"
                 )
                 checkpoint_dir = ""
@@ -512,7 +509,7 @@ def main():
                             "epoch_train_loss": train_loss,
                             "val_loss": val_loss,
                             "d2c": d2c,
-                            "gamma": get_mixing_factor(cfg, global_step),
+                            "gamma": get_mixing_factor(cfg, global_step, len(train_ds), lr_scheduler.get_last_lr()[0]),
                             "epoch_time": train_time,
                             "total_train_time": total_train_time,
                             "epoch": epoch + 1,

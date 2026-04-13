@@ -95,10 +95,20 @@ class AdamConfig(_BaseModel):
 OPTIMIZERS = Union[AdamConfig]
 
 
-class LRScheduler(_BaseModel):
-    type: str = Field(default="inverse_sqrt")
-    warmup_steps: int = Field(default=4000)
+class InverseSqrtLRScheduler(_BaseModel):
+    type: Literal["inverse_sqrt"] = Field(default="inverse_sqrt")
+    warmup_epoch: int = Field(default=1)
     warmup_decay: float = Field(default=0.01)
+
+
+class CosineLRScheduler(_BaseModel):
+    type: Literal["cosine"] = Field(default="cosine")
+    warmup_epoch: int = Field(default=1)
+    warmup_decay: float = Field(default=0.01)
+    min_lr: float = Field(default=0.0)
+
+
+LR_SCHEDULERS = Union[InverseSqrtLRScheduler, CosineLRScheduler]
 
 
 class Log(_BaseModel):
@@ -137,7 +147,7 @@ class NormalMixConfig(_BaseModel):
 class AdaptiveMixConfig(_BaseModel):
     name: Literal["adaptive"] = Field(default="adaptive")
     p: float = Field(default=1.0, description="Exponent for adjusting the mixing ratio")
-    start_step: int = Field(default=4000, description="Step to start adjusting the mixing ratio")
+    start_epoch: int = Field(default=1, description="Epoch to start adjusting the mixing ratio")
 
 
 MIXING_CONFIGS = Union[NormalMixConfig, AdaptiveMixConfig]
@@ -162,7 +172,7 @@ class Train(_BaseModel):
     network: Network = Field(default_factory=Network)
     model: Model = Field(default_factory=Model)
     optim: OPTIMIZERS = Field(default_factory=AdamConfig, discriminator="name")
-    lr_scheduler: LRScheduler = Field(default_factory=LRScheduler)
+    lr_scheduler: LR_SCHEDULERS = Field(default_factory=InverseSqrtLRScheduler, discriminator="type")
     log: Log = Field(default_factory=Log)
     backend: BACKENDS = Field(default_factory=PyTorchDDPBackend, discriminator="name")
 

@@ -1,7 +1,7 @@
 import torch
 from torch.nn import Module
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import LambdaLR, LRScheduler
+from torch.optim.lr_scheduler import LambdaLR, LRScheduler, CosineAnnealingLR, LinearLR, SequentialLR
 import os
 import subprocess
 from loguru import logger
@@ -96,28 +96,56 @@ def get_optim(cfg: Config, model: Module) -> Optimizer:
     return optim_fn(params)  # type: ignore
 
 
-def get_lr_scheduler_fn(cfg: Config) -> Callable[[Optimizer], LRScheduler]:
-    match cfg.train.lr_scheduler.type.lower():
+def get_lr_scheduler_fn(cfg: Config, step_per_epoch: int) -> Callable[[Optimizer], LRScheduler]:
+    scheduler_cfg = cfg.train.lr_scheduler
+
+    match scheduler_cfg.type:
         case "inverse_sqrt":
 
-            def lr_scheduler_fn(optimizer: Optimizer) -> LRScheduler:
+            def is_lr_scheduler_fn(optimizer: Optimizer) -> LRScheduler:
                 def lr_lambda(step: int) -> float:
-                    if step < cfg.train.lr_scheduler.warmup_steps:
-                        return (1 - cfg.train.lr_scheduler.warmup_decay) * (
+                    if step < scheduler_cfg.warmup_epoch * step_per_epoch:
+                        return (1 - scheduler_cfg.warmup_decay) * (
                             step + 1
-                        ) / cfg.train.lr_scheduler.warmup_steps + cfg.train.lr_scheduler.warmup_decay
+                        ) / (scheduler_cfg.warmup_epoch * step_per_epoch) + scheduler_cfg.warmup_decay
                     else:
-                        return (cfg.train.lr_scheduler.warmup_steps**0.5) * ((step + 1) ** (-0.5))
+                        return ((scheduler_cfg.warmup_epoch * step_per_epoch) ** 0.5) * ((step + 1) ** (-0.5))
 
                 return LambdaLR(optimizer, lr_lambda=lr_lambda)
 
-            return lr_scheduler_fn
+            return is_lr_scheduler_fn
+
+        case "cosine":
+
+            def cosine_lr_scheduler_fn(optimizer: Optimizer) -> LRScheduler:
+                warmup_steps = scheduler_cfg.warmup_epoch * step_per_epoch
+                total_steps = cfg.train.max_epochs * step_per_epoch
+
+                warmup_scheduler = LinearLR(
+                    optimizer,
+                    start_factor=scheduler_cfg.warmup_decay,
+                    total_iters=warmup_steps,
+                )
+                cosine_scheduler = CosineAnnealingLR(
+                    optimizer,
+                    T_max=total_steps - warmup_steps,
+                    eta_min=scheduler_cfg.min_lr,
+                )
+
+                return SequentialLR(
+                    optimizer,
+                    schedulers=[warmup_scheduler, cosine_scheduler],
+                    milestones=[warmup_steps],
+                )
+
+            return cosine_lr_scheduler_fn
+
         case _:
             raise ValueError(f"Unsupported lr_scheduler: {cfg.train.lr_scheduler.type}")
 
 
-def get_lr_scheduler(cfg: "Config", optimizer: Optimizer) -> LRScheduler:
-    lr_scheduler_fn = get_lr_scheduler_fn(cfg)
+def get_lr_scheduler(cfg: "Config", optimizer: Optimizer, step_per_epoch: int) -> LRScheduler:
+    lr_scheduler_fn = get_lr_scheduler_fn(cfg, step_per_epoch)
     return lr_scheduler_fn(optimizer)
 
 
